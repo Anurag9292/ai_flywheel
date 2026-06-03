@@ -34,6 +34,7 @@ The platform answers two questions traditional AI frameworks ignore: **"Should t
 |----------|-------------|
 | [ventures.md](ventures.md) | Venture system, MatchHire happy flow, venture economics |
 | [validation-framework.md](validation-framework.md) | Evidence Ladder — 5 rungs from market structure to money signals |
+| [validation-config.md](validation-config.md) | Override, skip, or customize validation — presets, budgets, parallel execution |
 | [integrations.md](integrations.md) | Tool Forge scope, automation tiers, external service catalog |
 | [interaction-model.md](interaction-model.md) | Multi-channel: Slack + Web App + CLI, Conversation Router |
 | [feedback-loops.md](feedback-loops.md) | 6 loop types, cross-system flows, meta-learning |

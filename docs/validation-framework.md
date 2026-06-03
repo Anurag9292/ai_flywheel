@@ -261,3 +261,9 @@ After validating 2 ventures, the Pattern Library has learned:
 ### The Compounding Effect
 
 Each validated (or killed) venture makes the *platform itself* smarter. This is not just "the founder learned something" — it's encoded in the system's models, templates, and decision logic. The flywheel spins faster with every revolution.
+
+---
+
+## See Also
+
+- **[Validation Configuration & Overrides](validation-config.md)** — How to skip rungs, set budget caps, use presets, inject manual confidence, and run rungs in parallel or inverted order.
