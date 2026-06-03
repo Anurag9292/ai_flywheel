@@ -83,6 +83,7 @@ Production performance metrics and human corrections automatically identify unde
 - Defines agent blueprints: declarative specifications of an agent's purpose, prompts, tools, memory config, policies, and success metrics
 - Implements 8 agent archetypes (researcher, analyst, creator, reviewer, executor, monitor, coordinator, specialist) with archetype-specific defaults and best practices
 - Orchestrates multi-agent patterns: sequential pipelines, parallel fan-out, hierarchical delegation, adversarial debate, consensus voting, intelligent routing, and MapReduce for data-parallel tasks
+- Multi-agent workflows are implemented as Temporal workflows — agent execution is a Temporal activity, orchestration patterns (sequential, parallel, hierarchical) are Temporal workflow patterns, and human-in-the-loop is a Temporal signal
 - Manages agent lifecycle: instantiation, execution, pause/resume, timeout, graceful shutdown, and resource cleanup
 - Provides agent-level observability: execution traces, decision logs, tool call sequences, and performance metrics per agent instance
 - Supports dynamic agent composition — agents can spawn sub-agents, delegate tasks, and aggregate results based on runtime conditions
@@ -161,6 +162,14 @@ Tool invocation success rates and agent satisfaction scores identify unreliable 
 - Manages context window optimization: intelligently selects which memories to include in LLM context based on relevance scoring and token budget
 - Supports venture-level institutional memory: accumulates knowledge across all agent interactions, building a shared knowledge base
 - Provides memory versioning and rollback — recover from corrupted or poisoned memory states
+
+### Memory Access Control & Routing
+
+- Agent blueprints explicitly declare which memory tiers they can access (working, episodic, semantic, procedural, cross-agent)
+- The Memory Engine enforces these permissions — an agent can only retrieve from granted tiers
+- This prevents context pollution: a stateless screening agent shouldn't access episodic memory from other agents' conversations
+- Default access levels per archetype (e.g., executor = working + procedural only, researcher = working + semantic + episodic)
+- Strict routing prevents one agent's context from polluting another's reasoning
 
 ### Feedback Loop
 

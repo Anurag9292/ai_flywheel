@@ -14,7 +14,7 @@ ai_flywheel/
 │   ├── config.py                     # Platform Core (config, secrets)
 │   ├── identity.py                   # Identity & Tenancy
 │   ├── events.py                     # Event Bus
-│   ├── tasks.py                      # Task Runtime
+│   ├── tasks.py                      # Task Runtime (Temporal wrapper)
 │   ├── traces.py                     # Trace & Observability
 │   ├── artifacts.py                  # Artifact Manager
 │   ├── database.py                   # DB connection

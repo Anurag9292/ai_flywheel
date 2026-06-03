@@ -83,18 +83,18 @@ Production drift detection triggers automatic retraining with fresh data. Model 
 
 ### What It Does
 
-- Computes standard ML metrics (accuracy, precision, recall, F1, AUC, RMSE) with confidence intervals, per-slice breakdowns, and statistical significance testing
-- Implements LLM-as-judge evaluation: uses strong models to evaluate weaker model outputs on dimensions like helpfulness, accuracy, safety, and coherence
-- Orchestrates human evaluation pipelines: routes model outputs to human evaluators with calibrated rubrics, measuring agreement and quality
-- Manages benchmark suites: versioned collections of test cases with expected outputs, covering common cases, edge cases, and adversarial inputs
-- Provides regression testing: automatically runs evaluation suites when models, prompts, or agents change, blocking deployments that regress
+- Core LLM evaluation powered by existing frameworks (Ragas for RAG quality, DeepEval for general LLM output evaluation) — not built from scratch
+- Custom domain-specific evaluators built on top: bias detection, domain accuracy, format compliance, and venture-specific quality measures
+- Human evaluation pipelines for calibration — routes model outputs to human evaluators when automated evaluation diverges from human judgment
+- Benchmark management and regression testing built in-house as a thin orchestration layer: versioned test suites, automatic runs on change, deployment gating
+- The framework composes external evaluators + custom evaluators into unified evaluation runs with consistent scoring and reporting
+- Statistical variance handling and calibration delegated to proven libraries rather than reimplemented — confidence intervals and significance testing via established methods
 - Implements fairness and bias testing: evaluates model performance across demographic groups, sensitive attributes, and protected categories
-- Supports custom metric definitions: venture-specific quality measures that combine multiple signals into a single score
 - Provides evaluation analytics: tracks metric trends over time, identifies which changes improved/degraded quality, and predicts evaluation outcomes
 
 ### Feedback Loop
 
-Evaluation results that disagree with production outcomes (high eval score but poor production performance) identify benchmark gaps. Human evaluator disagreements refine rubrics. Fairness violations trigger targeted data collection and model updates.
+Evaluation results that disagree with production outcomes (high eval score but poor production performance) identify benchmark gaps. Human evaluator disagreements refine rubrics. Fairness violations trigger targeted data collection and model updates. Evaluator calibration improves as human evaluation data accumulates — the platform learns when Ragas/DeepEval scores diverge from actual human preferences and adjusts weighting accordingly.
 
 ### Feeds Into
 
