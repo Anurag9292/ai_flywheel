@@ -116,38 +116,94 @@ Retrieval quality tracking identifies queries where embedding similarity fails t
 
 ## Module 17: Knowledge Graph Builder
 
-**Entity extraction, relationships, ontology construction, domain knowledge, temporal facts, multi-source fusion, reasoning — absorbs old Domain Knowledge Extractor**
+**A configurable multi-agent pipeline for constructing, maintaining, and exporting structured knowledge representations — not a single agent, but a deep pipeline where each step has independent evaluation and experimentation.**
 
-### What It Does
+### The KG Construction Pipeline
 
-- Extracts entities (people, companies, products, concepts, events) and relationships from unstructured text using NER, relation extraction, and LLM-powered analysis
-- Constructs domain-specific ontologies: identifies entity types, relationship types, and hierarchies relevant to each venture's domain
-- Manages temporal facts: relationships and attributes have valid-from/valid-to timestamps, enabling point-in-time queries and change tracking
-- Implements multi-source fusion: reconciles conflicting information from different sources using confidence scoring, recency weighting, and source reliability
-- Provides graph reasoning: traverses relationships to infer implicit knowledge, detect contradictions, and answer complex multi-hop questions
-- Supports graph versioning with full change history, enabling comparison of knowledge state across time periods
-- Implements automatic knowledge maintenance: detects stale facts, validates against new data, and flags contradictions for review
-- Exposes a query API supporting SPARQL-like graph queries, natural language questions, and path-finding between entities
+The Knowledge Graph Builder is composed of specialized sub-agents, each handling a distinct phase:
+
+**ANALYSIS PHASE:**
+- **Structure Inferrer** — Analyzes document structure (headings, sections, tables, lists) to understand organizational hierarchy before extraction
+- **Visual Analyzer** — Processes images, tables, diagrams, and charts to extract structured information that text-only approaches miss
+- **Summarizer** — Produces section-level and document-level summaries used as context during extraction
+
+**EXTRACTION PHASE:**
+- **Ontology Extractor** — Infers what TYPES of entities exist in this customer's domain (Person, Product, Process, Team, Policy, etc.) and defines the schema before entity extraction begins. This is the foundation — getting the ontology wrong means everything downstream is wrong.
+- **Relationship Extractor** — Identifies what relationship TYPES exist (owns, reports_to, depends_on, contradicts, supersedes, etc.) and defines the edge schema
+
+**TRANSFORMATION PHASE:**
+- **Entity Extractor** — Finds all instances of each entity type across all documents. Uses the ontology as a constraint.
+- **Entity Resolver** — Deduplicates and merges entities that refer to the same real-world thing ("John Smith" = "J. Smith" = "the VP of Engineering"). This is one of the hardest sub-problems.
+- **Relationship Mapper** — Connects resolved entities with typed edges. Validates that relationships conform to the defined schema.
+- **KG Builder** — Assembles the final graph structure from resolved entities and validated relationships.
+
+**EXPORT PHASE:**
+- **Schema Exporter** — Exports the typed schema (entity types, relationship types, constraints) for use at query time. This schema is what constrains the LLM to prevent hallucination.
+
+### Schema-Constrained Generation (Anti-Hallucination)
+
+The graph schema is used at query time to prevent hallucination:
+- The schema defines what entities and relationships EXIST in this customer's knowledge base
+- When a user asks a question, the system first queries the graph for factual grounding
+- The synthesis agent is constrained to ONLY reference entities that actually exist in the graph
+- If the LLM tries to invent an entity not in the graph, the constraint catches it
+- Example: User asks "What products does Acme make?" → Graph lookup returns [WidgetPro, DataSync] → LLM can ONLY reference these two, cannot hallucinate a third product
+
+### Per-Step Evaluation
+
+Each pipeline step has independent evaluation metrics:
+
+| Step | Metric | What it measures |
+|------|--------|-----------------|
+| Ontology Extraction | Coverage score | % of real entity types captured |
+| Ontology Extraction | Precision | Are extracted types real (not noise)? |
+| Entity Extraction | Recall | % of all entities found |
+| Entity Extraction | Precision | % of extracted entities that are real |
+| Entity Resolution | F1 score | Correct merges vs. incorrect merges vs. missed merges |
+| Relationship Extraction | Accuracy | % of edges that are factually correct |
+| Relationship Extraction | Coverage | % of real relationships captured |
+| Schema Export | Constraint effectiveness | How much does schema reduce hallucination rate? |
+| End-to-end | Graph utility | Do answers improve when using the graph vs. not? |
+
+### Per-Step Experimentation
+
+Each step is independently A/B testable via the Experiment Tracker:
+- Test different ontology extraction prompts (zero-shot vs few-shot vs iterative refinement)
+- Test different entity resolution strategies (embedding similarity vs fuzzy matching vs LLM-based)
+- Test different relationship extraction approaches (per-document vs cross-document vs hybrid)
+- Test schema injection strategies at query time (full schema vs relevant sub-schema vs graph traversal results only)
+- Each experiment runs independently without affecting other steps
+
+### The Research Imperative
+
+Building a production-grade knowledge graph is NOT a wrapper problem. It requires:
+- Reading academic papers on ontology learning, entity resolution, and relationship extraction
+- Understanding which approaches work for which data types
+- When the system doesn't know how to solve a sub-problem: surface it to the founder, suggest papers, ask for sample implementations
+- The Academic Radar capabilities of Market & Signal Intelligence should be actively finding new KG construction techniques
 
 ### Feedback Loop
 
-Query failures (questions the graph can't answer) identify knowledge gaps that drive targeted extraction. User corrections of incorrect facts improve extraction accuracy. Stale fact detection refines temporal validity heuristics.
+- Query-time failures (hallucinated entities, wrong relationships cited) trace back to specific pipeline steps
+- Entity resolution errors are detected when users correct an answer referencing the wrong entity
+- Ontology gaps are detected when queries can't be answered because the entity type wasn't extracted
+- Schema effectiveness is measured by comparing hallucination rates with/without schema constraint
+- Each improvement at any step compounds with improvements at other steps (multiplicative quality)
 
 ### Feeds Into
 
-- **Agent Factory (9)** — Agents query the knowledge graph for domain context
-- **Memory Engine (11)** — Graph facts feed semantic memory
-- **Venture Thesis Engine (27)** — Market entities and relationships inform hypotheses
-- **Customer Discovery Engine (26)** — Customer/market knowledge supports interview analysis
-- **Feature Factory (20)** — Graph features (degree, centrality, paths) become ML features
+- **Agent Factory (9)** — graph schema constrains agent generation at query time
+- **Embedding Engine (16)** — graph entities enrich embedding metadata for filtered retrieval
+- **Evaluation Framework (22)** — graph accuracy is a core evaluation dimension
+- **Memory Engine (11)** — graph provides semantic memory (facts) to agents
 
 ### Fed By
 
-- **Universal Ingestor (14)** — Documents provide raw text for entity extraction
-- **Data Quality Engine (15)** — Clean, deduplicated records feed reliable graph construction
-- **Embedding Engine (16)** — Similarity helps entity resolution and relationship discovery
-- **Labeling & Ground Truth (18)** — Labeled entity/relation data trains extraction models
-- **Market & Signal Intelligence (25)** — Market data provides entities and relationships
+- **Universal Ingestor (14)** — raw documents to process
+- **Data Quality Engine (15)** — clean, deduplicated source data
+- **Feedback Collector (33)** — user corrections reveal graph errors
+- **Experiment Tracker (31)** — experiment results improve each pipeline step
+- **Labeling & Ground Truth (18)** — gold-standard entity/relationship labels for evaluation
 
 ---
 
