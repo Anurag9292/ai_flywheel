@@ -114,6 +114,8 @@ The Evidence Ladder is System 5's (Product & Market Intelligence) systematic app
 
 **What you're answering:** Will people take action (not just talk) when presented with a solution?
 
+**Note:** All traffic-splitting experiments during validation use Multi-Armed Bandits (Thompson Sampling) by default, not traditional A/B testing. At early-stage traffic volumes (< 1000 visitors), frequentist tests would take weeks to reach significance. Thompson Sampling converges in days by dynamically allocating traffic to the best performer. See [A/B Test & Optimization Engine (Module 32)](modules/system-6-experimentation.md) for details.
+
 **Activities:**
 
 - **Landing page test** — AI generates copy from interview insights, designs page structure, deploys to Vercel. Founder approves messaging/positioning. Drives traffic via ads.

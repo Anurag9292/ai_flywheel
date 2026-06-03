@@ -526,3 +526,54 @@ Every interaction follows the same pattern:
 4. **Signal** when human decides → REST → Temporal signal → workflow resumes
 5. **Sleep** when waiting → no resources, countdown in UI
 6. **Complete** → final state rendered, metrics recorded
+
+---
+
+## Pattern: Embedding Model Migration
+
+When upgrading to a better/cheaper embedding model, a Temporal workflow handles the migration:
+
+```python
+@workflow.defn
+class EmbeddingMigrationWorkflow:
+    """Gradually re-embeds all documents from old model to new model."""
+    
+    @workflow.run
+    async def run(self, old_collection_id: str, new_model_config: dict):
+        # 1. Create new collection (new model, new dimensions)
+        new_collection = await workflow.execute_activity(
+            create_collection, args=[new_model_config],
+            start_to_close_timeout=timedelta(seconds=30),
+        )
+        
+        # 2. Re-embed in batches (can take days for large collections)
+        total = await workflow.execute_activity(
+            count_documents, args=[old_collection_id]
+        )
+        
+        for offset in range(0, total, 100):
+            await workflow.execute_activity(
+                re_embed_batch,
+                args=[old_collection_id, new_collection.id, offset, 100],
+                start_to_close_timeout=timedelta(minutes=5),
+                retry_policy=RetryPolicy(maximum_attempts=3),
+            )
+            # Rate limit: don't overwhelm the embedding API
+            await workflow.sleep(timedelta(seconds=2))
+        
+        # 3. Activate new collection (queries now route here)
+        await workflow.execute_activity(
+            activate_collection, args=[new_collection.id]
+        )
+        
+        # 4. Deprecate old (keep 30 days for rollback)
+        await workflow.execute_activity(
+            deprecate_collection, args=[old_collection_id]
+        )
+```
+
+Key properties:
+- **Zero downtime** — queries served from v1 until v2 is fully populated
+- **Cost-controlled** — batches with sleep intervals prevent API cost spikes
+- **Resumable** — if worker dies mid-migration, Temporal resumes from last completed batch
+- **Rollbackable** — old collection kept for 30 days, can reactivate instantly

@@ -46,10 +46,12 @@ Experiment outcome predictions (from meta-learning) are validated against actual
 
 ### What It Does
 
-- Runs frequentist A/B tests with proper statistical rigor: sample size calculation, power analysis, multiple comparison correction, and stopping rules
+- **Default: Multi-Armed Bandits (Thompson Sampling)** for early-stage and low-traffic scenarios (< 1000 visitors per variant). Converges in days not months. Minimizes regret by dynamically allocating traffic to the best performer. After ~30-50 observations, Thompson Sampling is already allocating 70%+ of traffic to the winning variant. Works equally well with 2 variants or 20 variants.
+- **Traditional frequentist A/B testing** reserved for high-traffic scenarios where statistical rigor is needed (10K+ users, regulatory requirements, irreversible decisions). Includes proper sample size calculation, power analysis, multiple comparison correction, and stopping rules.
+- **Auto-selection** — the engine automatically chooses the right method based on expected traffic volume. Below threshold = Thompson Sampling. Above = frequentist.
+- **Why this matters for venture validation**: Early-stage landing pages might get 150 visitors/week. Traditional A/B testing would take 4-6 weeks for significance. Thompson Sampling gives actionable signal in days by allocating 70%+ traffic to the best performer after just 30-50 observations.
 - Implements sequential testing (always-valid p-values): enables early stopping when results are conclusive without inflating false positive rates
 - Supports multi-variant testing (A/B/C/n): tests multiple alternatives simultaneously with appropriate statistical adjustments
-- Provides multi-armed bandit algorithms: Thompson Sampling, UCB, and Epsilon-Greedy for explore/exploit optimization with automatic convergence detection
 - Implements Bayesian optimization for continuous parameter spaces: efficiently searches for optimal configurations with minimal evaluations
 - Supports contextual bandits: selects variants based on user/context features, personalizing treatment allocation for heterogeneous populations
 - Manages traffic splitting: hash-based consistent assignment, venture-level isolation, mutual exclusion between concurrent experiments, and holdout groups

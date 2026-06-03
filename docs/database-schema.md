@@ -659,36 +659,77 @@ labels (
 
 ---
 
-### `embeddings`
+### `embedding_collections`
 
 ```sql
-embeddings (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+-- Embedding collections (versioned, namespaced)
+embedding_collections (
+    id TEXT PRIMARY KEY,
     venture_id UUID REFERENCES ventures(id) ON DELETE CASCADE,
-    source_type TEXT NOT NULL,  -- document, chunk, entity, query, memory
-    source_id TEXT NOT NULL,
-    vector vector(1536) NOT NULL,  -- dimension depends on model
-    model_used TEXT NOT NULL DEFAULT 'text-embedding-3-small',
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+    name TEXT NOT NULL,              -- e.g., "resume_embeddings"
+    model_name TEXT NOT NULL,        -- e.g., "text-embedding-3-small"
+    model_version TEXT NOT NULL,     -- e.g., "v2"
+    dimensions INT NOT NULL,         -- e.g., 1536
+    status TEXT DEFAULT 'active',    -- "active" | "migrating" | "deprecated"
+    document_count BIGINT DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW()
 )
 ```
 
-**Purpose:** Vector embedding storage for semantic search, RAG, similarity matching, and agent memory retrieval. Uses pgvector for co-located vector operations with relational data.
+**Purpose:** Versioned, namespaced embedding collections. Each collection is tied to a specific model + dimension. When upgrading embedding models, a new collection is created and a background Temporal workflow migrates data. Queries route to the active collection. This prevents the silent failure of comparing vectors of different dimensions.
 
 **Key Relationships:**
-- FK to `ventures(id)`
+- FK to `ventures(id)` — scoped to a venture
+- Parent of `embeddings` via `collection_id`
+- `status` controls query routing: only `active` collections receive queries
+
+**Indexing Strategy:**
+- Composite index on `(venture_id, name, status)` for active collection lookup
+- Index on `status` for migration management
+
+**Design Decisions:**
+- Embeddings are NEVER stored in a global flat table. Each collection is tied to a specific model + dimension.
+- When upgrading embedding models, a new collection is created and a background Temporal workflow migrates data.
+- Queries route to the active collection. This prevents the silent failure of comparing vectors of different dimensions.
+
+**Growth:** Low — a handful of collections per venture (one per embedding use case × model version).
+
+---
+
+### `embeddings`
+
+```sql
+-- Embeddings belong to a specific collection (never global)
+embeddings (
+    id TEXT PRIMARY KEY,
+    collection_id TEXT REFERENCES embedding_collections(id),
+    source_type TEXT NOT NULL,       -- document, chunk, entity, query, memory
+    source_id TEXT NOT NULL,
+    vector VECTOR,                   -- dimension matches collection's dimensions
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+)
+```
+
+**Purpose:** Vector embedding storage for semantic search, RAG, similarity matching, and agent memory retrieval. Uses pgvector for co-located vector operations with relational data. Every embedding belongs to a specific collection — never stored globally.
+
+**Key Relationships:**
+- FK to `embedding_collections(id)` — scoped to a versioned collection
 - `source_type` + `source_id` provide polymorphic reference to original content
 - Queried by Memory Engine and Knowledge Graph for retrieval
 
 **Indexing Strategy:**
 - HNSW index on `vector` with `vector_cosine_ops` for fast similarity search
-- Composite index on `(venture_id, source_type)` for scoped retrieval
-- Index on `model_used` for model-specific queries
+- Composite index on `(collection_id, source_type)` for scoped retrieval
+- Index on `source_id` for lookups by source
 
 **Design Decisions:**
 - Separate table (not alongside source data) keeps source tables lean
-- Multiple embedding models supported via `model_used` column
+- Collection-scoped architecture ensures vectors from different models are never mixed in similarity search
 - HNSW chosen over IVFFlat for better recall with acceptable insert performance
+- Dimension is not fixed in schema — it matches the parent collection's `dimensions` field
+
+> **Important:** Embeddings are NEVER stored in a global flat table. Each collection is tied to a specific model + dimension. When upgrading embedding models, a new collection is created and a background Temporal workflow migrates data. Queries route to the active collection. This prevents the silent failure of comparing vectors of different dimensions.
 
 **Growth:** **HIGH VOLUME** — scales with ingested content. Millions of vectors for active ventures.
 
