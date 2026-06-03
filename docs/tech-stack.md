@@ -2,7 +2,9 @@
 
 ## Overview
 
-The AI Flywheel platform is built as a **Python backend** with a **Next.js frontend**. Every technology choice optimizes for three things: rapid iteration speed, AI/ML ecosystem compatibility, and a clear scaling path.
+The AI Flywheel platform is built as a **Python backend** with a **Next.js frontend** and **multi-channel interaction** (Slack bot, Web App, CLI). Every technology choice optimizes for three things: rapid iteration speed, AI/ML ecosystem compatibility, and a clear scaling path.
+
+The same backend serves all interaction surfaces — a conversational Slack bot for quick queries, a rich web dashboard for deep analysis, and a developer CLI for automation. This multi-channel architecture ensures the platform meets users where they work.
 
 ---
 
@@ -11,16 +13,16 @@ The AI Flywheel platform is built as a **Python backend** with a **Next.js front
 | Layer | Choice | Why |
 |-------|--------|-----|
 | Language | Python 3.12+ | AI/ML ecosystem, async, type hints |
-| Web Framework | FastAPI | Async, typed, auto-docs, WebSocket support |
-| Frontend | Next.js + TypeScript | SSR, API routes, node graph editors, dashboards, real-time |
-| Database | PostgreSQL | Relational, JSONB for flexibility, proven at scale |
-| Vector Store | pgvector (+ optional Qdrant) | Embeddings, similarity search, co-located |
-| Task Queue | Celery + Redis | Async agent execution, ML jobs, background tasks |
-| Event Bus | Redis Streams (→ Kafka later) | Inter-module communication, event sourcing |
-| Cache | Redis | Prompt caching, LLM response dedup, session state |
-| Object Storage | MinIO (local) / S3 (prod) | Datasets, model artifacts, documents |
-| ML Tracking | Custom (on Postgres) | Integrated with experiment system |
-| Containerization | Docker + Docker Compose | Dev environment, isolation, deployment |
+| Web Framework | FastAPI | Async, typed, auto-docs, WebSocket |
+| Frontend | Next.js + TypeScript | SSR, App Router, API routes, Vercel AI SDK |
+| Database | PostgreSQL | Relational, JSONB, proven scale |
+| Vector Store | pgvector (+ optional Qdrant) | Co-located with relational data |
+| Task Queue | Celery + Redis | Async execution, ML jobs, background tasks |
+| Event Bus | Redis Streams (→ Kafka later) | Inter-module communication |
+| Cache | Redis | Prompt caching, response dedup, session state |
+| Object Storage | MinIO (local) / S3 (prod) | Datasets, artifacts, documents |
+| Containerization | Docker + Docker Compose | Dev environment, deployment |
+| Slack Integration | Slack Bolt (Python) | Bot framework for Slack channel |
 
 ---
 
@@ -28,7 +30,7 @@ The AI Flywheel platform is built as a **Python backend** with a **Next.js front
 
 ### Python 3.12+
 
-**What it does:** Primary language for all backend logic, agent orchestration, ML pipelines, and API services.
+**What it does:** Primary language for all backend logic — agent orchestration, ML pipelines, API services, Slack bot, and CLI tool.
 
 **Why this choice:**
 - The AI/ML ecosystem is Python-first. Every major library (PyTorch, transformers, langchain, scikit-learn) is Python-native. Fighting this means fighting the ecosystem.
@@ -43,11 +45,19 @@ The AI Flywheel platform is built as a **Python backend** with a **Next.js front
 
 **Scaling path:** Python handles throughput well for our workload (I/O-bound LLM calls, not CPU-bound computation). If specific modules become CPU-bound, we can extract them to Rust/C extensions or separate services.
 
+**Key dependencies:**
+- `pydantic` — runtime type validation
+- `structlog` — structured logging
+- `httpx` — async HTTP client
+- `litellm` — unified LLM interface
+- `celery` — distributed task execution
+- `slack-bolt` — Slack bot framework
+
 ---
 
 ### FastAPI
 
-**What it does:** HTTP API layer for all external communication — frontend, webhooks, third-party integrations, and inter-module REST calls.
+**What it does:** HTTP API layer for all external communication — frontend, webhooks, third-party integrations, and WebSocket connections for real-time streaming.
 
 **Why this choice:**
 - Built on Starlette/uvicorn for async performance
@@ -71,21 +81,21 @@ The AI Flywheel platform is built as a **Python backend** with a **Next.js front
 
 ---
 
-### Next.js + TypeScript
+### Next.js + TypeScript (App Router)
 
 **What it does:** Full-stack frontend with server-side rendering, API routes, and rich client-side interactivity for venture management, agent monitoring, workflow visualization, experiment tracking, and real-time system observation.
 
 **Why this choice:**
-- Built on React — richest ecosystem for complex UI: node graph editors (react-flow), data visualization (recharts, d3), real-time dashboards
+- App Router with server components minimizes client-side JavaScript and enables streaming
 - Server-side rendering for fast initial loads and SEO when needed
 - API routes provide a BFF (Backend-for-Frontend) layer, reducing round trips to the Python API
-- App Router with server components minimizes client-side JavaScript
+- Vercel AI SDK for streaming LLM responses directly in the UI with built-in hooks
+- Built on React — richest ecosystem for complex UI: node graph editors (react-flow), data visualization (recharts, d3), real-time dashboards
 - TypeScript catches bugs at compile time and provides excellent DX
 - Component ecosystem (shadcn/ui, radix) accelerates UI development
-- Vercel AI SDK for streaming LLM responses directly in the UI
 
 **Why not alternatives:**
-- **Vite + React SPA**: No SSR, no built-in API routes, more infrastructure to manage
+- **Vite + React SPA**: No SSR, no built-in API routes, no server components, more infrastructure to manage
 - **Vue/Svelte**: Smaller ecosystems for the specialized components we need (graph editors, complex data tables)
 - **HTMX/server-side only**: Not suited for the rich interactivity we need — dragging nodes, real-time updates, complex state
 - **No frontend (CLI only)**: Would limit accessibility and make the multi-venture dashboard impractical
@@ -94,12 +104,36 @@ The AI Flywheel platform is built as a **Python backend** with a **Next.js front
 
 **Key dependencies:**
 - `react-flow` — agent network and workflow visual editor
-- `@tanstack/react-query` — server state management
+- `@tanstack/react-query` — server state management with caching and real-time updates
 - `recharts` — metrics and experiment visualization
-- `zustand` — client state management
+- `zustand` — lightweight client state management
 - `tailwindcss` — utility-first styling
-- `ai` (Vercel AI SDK) — streaming LLM responses in UI
 - `shadcn/ui` — accessible component primitives
+- `ai` (Vercel AI SDK) — streaming LLM responses, useChat/useCompletion hooks
+
+---
+
+### Slack Bolt (Python)
+
+**What it does:** Powers the conversational Slack bot channel — the primary interaction surface for quick queries, notifications, approvals, and lightweight task management without leaving Slack.
+
+**Why this choice:**
+- Official Slack framework with first-class Python support
+- Handles Socket Mode and HTTP-based events
+- Built-in middleware for authentication, message parsing, and event routing
+- Supports slash commands, interactive messages, modals, and app home tabs
+- Async support aligns with our FastAPI-based backend
+
+**Why not alternatives:**
+- **Custom webhook handling**: Reinventing message parsing, auth, rate limiting that Bolt provides for free
+- **Node.js Bolt**: Would introduce a second language for one integration
+- **Third-party wrappers**: Less maintained, missing features
+
+**Scaling path:** Slack Bolt supports both Socket Mode (simple, no public endpoint needed) and Events API (HTTP webhooks for high-volume). For enterprise deployments with many workspaces, switch to Events API behind a load balancer.
+
+**Key dependencies:**
+- `slack-bolt` — core framework
+- `slack-sdk` — low-level Slack API client (bundled with bolt)
 
 ---
 
@@ -199,7 +233,7 @@ The AI Flywheel platform is built as a **Python backend** with a **Next.js front
 **Specific uses:**
 - **Prompt cache**: Identical LLM calls return cached responses (huge cost savings)
 - **Response dedup**: Prevent duplicate agent executions for the same input
-- **Session state**: Track multi-turn agent conversations
+- **Session state**: Track multi-turn conversations across channels (Slack, web, CLI)
 - **Rate limiting**: Per-venture, per-model API rate limiting
 - **Real-time metrics**: Aggregate counters before flushing to Postgres
 
@@ -227,32 +261,13 @@ The AI Flywheel platform is built as a **Python backend** with a **Next.js front
 
 ---
 
-### Custom ML Tracking (on Postgres)
-
-**What it does:** Records experiments, model versions, metrics, hyperparameters, and lineage — all integrated directly with the platform's experiment and evaluation systems.
-
-**Why this choice:**
-- Tight integration with our Experiment Tracker and Evaluation Framework
-- No separate system to maintain or sync data between
-- Query experiment results alongside venture data, agent performance, and cost metrics
-- Custom schema designed for our specific workflow (not a generic tool)
-
-**Why not alternatives:**
-- **MLflow**: Full-featured but a separate service to run. Its data model doesn't match our venture/agent structure.
-- **Weights & Biases**: Great UI but SaaS cost scales with usage, data leaves your system, and integration is one-way.
-- **Neptune/Comet**: Same SaaS concerns as W&B.
-
-**Scaling path:** If we need richer experiment visualization, add a lightweight UI layer. The data stays in Postgres regardless.
-
----
-
 ### Docker + Docker Compose
 
 **What it does:** Packages the entire development environment — all services, databases, and dependencies in isolated containers. One command to start everything.
 
 **Why this choice:**
 - Reproducible environment across all developers
-- `docker compose up` starts Postgres, Redis, MinIO, API, worker, frontend
+- `docker compose up` starts Postgres, Redis, MinIO, API, Celery worker, Slack bot, frontend
 - Isolation prevents dependency conflicts
 - Same container images can deploy to any cloud
 - Easy to add new services (just add to compose file)
@@ -277,6 +292,9 @@ The AI Flywheel platform is built as a **Python backend** with a **Next.js front
 | `alembic` | Database migrations. Schema changes tracked in version control, applied automatically. |
 | `httpx` | Async HTTP client. Used for LLM API calls, web scraping, external integrations. |
 | `litellm` | Unified interface to 100+ LLM providers. Powers the LLM Gateway's model abstraction. |
+| `structlog` | Structured logging for observability. JSON output, context binding, processor pipeline. |
+| `celery` | Distributed task execution for agents and ML jobs. Canvas for complex workflows. |
+| `slack-bolt` | Slack bot framework. Handles events, slash commands, interactive components, modals. |
 
 ### ML/AI
 
@@ -292,22 +310,34 @@ The AI Flywheel platform is built as a **Python backend** with a **Next.js front
 
 | Library | Purpose |
 |---------|---------|
-| `celery` | Distributed task execution for agents and ML jobs. |
 | `redis-py` | Redis client for cache, pub/sub, and streams. |
 | `boto3` / `minio` | S3-compatible object storage client. |
-| `tenacity` | Retry logic for flaky external API calls (LLM providers). |
-| `structlog` | Structured logging for observability and debugging. |
+| `tenacity` | Retry logic for flaky external API calls (LLM providers, ad platforms). |
 
-### Frontend (npm)
+### External Service SDKs
+
+| Library | Purpose |
+|---------|---------|
+| `google-ads` | Google Ads API client. Campaign management, performance data, bid optimization. |
+| `linkedin-api` | LinkedIn Marketing API. Ad management, audience targeting, analytics. |
+| `stripe` | Payment processing. Subscription billing, usage metering, invoicing. |
+| `resend` | Transactional email. Notifications, reports, alerts, onboarding sequences. |
+
+These SDKs are managed through Tool Forge, which provides a unified interface for agents to interact with external platforms. Tool Forge handles authentication rotation, rate limiting, error retries, and schema normalization across all integrations.
+
+---
+
+## Frontend Libraries (npm)
 
 | Library | Purpose |
 |---------|---------|
 | `react-flow` | Visual node graph editor for agent networks and workflows. |
-| `@tanstack/react-query` | Server state management with caching and real-time updates. |
-| `recharts` | Charts and graphs for metrics dashboards. |
-| `zustand` | Lightweight client state management. |
-| `tailwindcss` | Utility-first CSS framework. |
-| `shadcn/ui` | Pre-built accessible component library. |
+| `@tanstack/react-query` | Server state management with caching, optimistic updates, and real-time sync. |
+| `recharts` | Charts and graphs for metrics dashboards and experiment results. |
+| `zustand` | Lightweight client state management. One store per domain. |
+| `tailwindcss` | Utility-first CSS framework. Rapid UI development without context switching. |
+| `shadcn/ui` | Pre-built accessible component library built on Radix primitives. |
+| `ai` (Vercel AI SDK) | Streaming LLM responses in UI. `useChat`, `useCompletion`, `useAssistant` hooks. |
 
 ---
 
@@ -343,36 +373,73 @@ alembic upgrade head
 
 ---
 
+## Multi-Channel Architecture
+
+The platform serves three interaction surfaces from a single backend, connected through a **Conversation Router** that maintains context across channels.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Conversation Router                       │
+│            (Intent detection, context management)             │
+└──────────┬────────────────────┬────────────────────┬────────┘
+           │                    │                    │
+    ┌──────▼──────┐     ┌──────▼──────┐     ┌──────▼──────┐
+    │  Slack Bot   │     │   Web App    │     │     CLI      │
+    │  (Bolt)      │     │  (Next.js)   │     │   (Click)    │
+    └─────────────┘     └─────────────┘     └─────────────┘
+```
+
+### Slack Bot (Primary conversational interface)
+- Quick queries: "What's the conversion rate for Venture X?"
+- Approvals: Human-in-the-loop review via interactive messages
+- Notifications: Experiment completions, anomalies, budget alerts
+- Slash commands: `/flywheel status`, `/flywheel deploy`
+
+### Web App (Rich visual interface)
+- Node graph editors for agent workflows
+- Real-time dashboards with streaming metrics
+- Experiment configuration and monitoring
+- Dataset browsing and model management
+
+### CLI (Developer automation)
+- Scripting and CI/CD integration
+- Bulk operations and data import
+- Local development and testing
+- Piped output for Unix toolchain integration
+
+All three channels share:
+- Session state (via Redis)
+- User identity and permissions
+- Conversation history and context
+- The same agent execution engine
+
+---
+
 ## Why Monorepo
 
-The platform is structured as a **single Python package with modules**, not as microservices. This is a deliberate choice for the current stage.
+The platform is structured as a **single Python package with modules** plus a **co-located Next.js frontend**, not as microservices. This is a deliberate choice for the current stage.
 
 ### Arguments For Monorepo
 
 1. **Shared types and validation**: Pydantic models are shared across modules. No API contract drift.
 2. **Atomic refactoring**: Rename a function, and every caller updates in the same commit.
 3. **Single test suite**: Integration tests run across module boundaries easily.
-4. **Simpler deployment**: One Docker image, one deployment pipeline, one version number.
+4. **Simpler deployment**: One Docker image for backend, one for frontend. One deployment pipeline.
 5. **Reduced overhead**: No service discovery, no API versioning between services, no distributed tracing complexity.
 6. **Faster iteration**: Change any module and see the effect immediately. No deploy-and-wait.
+7. **Multi-channel consistency**: All interaction surfaces (Slack, web, CLI) import from the same codebase — behavior is guaranteed consistent.
 
 ### Structure
 
 ```
-src/flywheel/
-├── __init__.py
-├── core/              # Shared utilities, base classes, config
-├── gateway/           # LLM Gateway module
-├── agents/            # Agent Factory + execution
-├── data/              # Dataset Scout, ingestion, quality
-├── experiments/       # Experiment Tracker, Model Forge
-├── evaluation/        # Evaluation Framework, benchmarks
-├── optimization/      # Bandit Optimizer, Cost Optimizer
-├── workflows/         # Workflow Engine
-├── ventures/          # Venture management, templates
-├── events/            # Event bus, pub/sub infrastructure
-├── api/               # FastAPI routes and WebSocket handlers
-└── models/            # SQLAlchemy models, Alembic migrations
+ai_flywheel/
+├── core/              # System 1: Core Kernel
+├── modules/           # Systems 2-8: Business logic
+├── ventures/          # Venture layer
+├── channels/          # Multi-channel interaction (Slack, CLI, WebSocket)
+├── api/               # FastAPI routes and middleware
+├── web/               # Next.js frontend
+└── tests/             # Comprehensive test suite
 ```
 
 ### When to Split
@@ -392,5 +459,6 @@ Even within the monorepo, modules communicate through **well-defined interfaces*
 - Modules communicate asynchronously via the event bus
 - No module directly imports another module's internal implementation
 - Database tables are owned by one module (others go through the API)
+- The Conversation Router abstracts channel-specific details from business logic
 
 This gives us the **organizational benefits** of service boundaries without the **operational overhead** of actual network calls between services.
