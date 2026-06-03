@@ -13,6 +13,43 @@ The schema mirrors the 8-system architecture, with tables grouped by the system 
 
 ---
 
+## Row-Level Security (Multi-Tenancy Enforcement)
+
+Every table with a `venture_id` column has Row-Level Security enabled. This enforces data isolation at the database layer — not just application code.
+
+### Why RLS?
+
+In a system where LLM-generated queries and dynamic RAG retrieval access the database, application-level filtering (`WHERE venture_id = ?`) is insufficient. One missed filter = cross-venture data leakage. RLS makes this impossible:
+
+```sql
+-- Enable RLS on every venture-scoped table
+ALTER TABLE agents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE experiments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE traces ENABLE ROW LEVEL SECURITY;
+-- ... (all tables with venture_id)
+
+-- Policy: rows only visible if venture_id matches session context
+CREATE POLICY venture_isolation ON agents
+  USING (venture_id = current_setting('app.current_venture_id')::text);
+
+-- At connection time (set by application):
+SET app.current_venture_id = 'venture_abc123';
+```
+
+### How it works in practice:
+- When a database session is created, the application sets `app.current_venture_id`
+- ALL queries on RLS-enabled tables are automatically filtered — even if the query omits a WHERE clause
+- LLM-generated SQL, dynamic queries, and RAG retrieval are all isolated
+- Global data (shared patterns, platform-level configs) lives in tables WITHOUT RLS
+
+### Tables WITH RLS (venture-scoped):
+All tables that contain venture-specific data: agents, prompts, experiments, traces, tasks, feedback, costs, models, datasets, knowledge_edges, etc.
+
+### Tables WITHOUT RLS (global):
+Platform-level tables: users, patterns (shared across ventures), metrics_definitions (global templates), tool definitions (shared integrations).
+
+---
+
 ## System 1: Core Kernel
 
 ### `ventures`
@@ -68,7 +105,9 @@ tasks (
 )
 ```
 
-**Purpose:** Persistent record of all asynchronous work. Every background operation — agent execution, model training, data ingestion, report generation — creates a task. Supports parent-child relationships for complex task DAGs.
+**Purpose:** Queryable index/cache of workflow state managed by Temporal.io. Every background operation — agent execution, model training, data ingestion, report generation — creates a task record here. Supports parent-child relationships for complex task DAGs.
+
+**Relationship to Temporal.io:** The source of truth for workflow execution state (step progress, retry history, current activity) is Temporal's event history, not this table. The `tasks` table exists for dashboards, history queries, and cross-referencing with other tables (traces, costs, feedback). Task status is synced from Temporal via event listeners — if Temporal says a workflow is running, this table reflects that.
 
 **Key Relationships:**
 - FK to `ventures(id)` — scoped to a venture
@@ -1235,22 +1274,22 @@ Row-level filtering via `venture_id` on every table (except `users`, `tools`, an
 
 ### Enforcement Layers
 
-1. **ORM layer**: SQLAlchemy query builder automatically injects `venture_id` filter
-2. **API middleware**: Extracts venture context from auth token, injects into request
-3. **Database constraints**: Foreign keys enforce referential integrity to `ventures(id)`
-4. **Application code**: `BaseModule.venture_context` provides scoping for all module operations
+1. **PostgreSQL RLS**: Row-Level Security policies enforce isolation at the database layer (see "Row-Level Security" section above)
+2. **ORM layer**: SQLAlchemy query builder automatically injects `venture_id` filter
+3. **API middleware**: Extracts venture context from auth token, sets `app.current_venture_id` on the database session
+4. **Database constraints**: Foreign keys enforce referential integrity to `ventures(id)`
+5. **Application code**: `BaseModule.venture_context` provides scoping for all module operations
 
 ### Isolation Guarantees
 
-- Data isolation: Queries never return data from other ventures (enforced by ORM)
+- Data isolation: Queries never return data from other ventures (enforced by RLS + ORM)
 - Cost isolation: Costs are attributed per-venture for accurate billing
 - Performance isolation: Heavy ventures don't block others (task queue priority, connection limits)
 - Configuration isolation: Each venture has independent module configs
 
 ### Future Options
 
-If stricter isolation is needed:
-- Row-level security (RLS) policies in PostgreSQL
+If stricter isolation is needed beyond RLS:
 - Schema-per-venture (complicates migrations but provides stronger isolation)
 - Separate databases (maximum isolation, maximum operational overhead)
 

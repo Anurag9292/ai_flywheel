@@ -179,6 +179,62 @@ System:
 
 ---
 
+## Workflow State (Temporal.io)
+
+The platform uses Temporal.io as its workflow engine. This fundamentally changes how mid-execution state is managed:
+
+### How Temporal Handles State Hydration
+
+Traditional approach (fragile):
+```
+Workflow starts → writes checkpoint to DB → continues → writes checkpoint → 
+  container dies → 
+  new container reads last checkpoint → tries to resume → 
+  often fails (missed state, race conditions, partial writes)
+```
+
+Temporal approach (durable):
+```
+Workflow starts → executes Step 1 → calls Agent A → 
+  pauses (waiting for human approval) →
+  container dies →
+  new container picks up →
+  Temporal replays event history (Step 1 complete, Agent A called, waiting for approval) →
+  workflow state reconstructed automatically →
+  approval signal arrives →
+  workflow resumes at exact point →
+  continues to Step 2
+```
+
+### Why This Matters for Our System
+
+Multi-agent workflows routinely:
+- **Pause for human approval** — employer reviews candidate shortlist (could be hours/days)
+- **Fan out to parallel agents** — 5 agents research simultaneously, then converge
+- **Wait for external triggers** — API callback, scheduled timer, customer action
+- **Retry failed activities** — LLM provider down, retry with backoff on another provider
+
+Without Temporal, each of these patterns requires custom state machines, checkpoint tables, and recovery logic. With Temporal, they're native primitives.
+
+### What This Means for Recovery
+
+| Scenario | Without Temporal | With Temporal |
+|----------|-----------------|---------------|
+| Container dies mid-workflow | Custom checkpoint + manual resume logic | Automatic — another worker picks up, replays history |
+| Need to retry a failed step | Custom retry table + scheduler | Built-in — configurable retry policy per activity |
+| Workflow paused for days | Timeout handling, state expiry logic | Native — workflow sleeps until signal, no resource usage |
+| Want to see workflow state | Query checkpoint table (often stale) | Temporal UI shows exact current state in real-time |
+| Need to cancel a workflow | Find checkpoint, clean up partial state | `workflow.cancel()` — Temporal handles cleanup |
+
+### Integration Points
+
+- **Task Runtime (Module 4)**: Thin wrapper around Temporal — provides the API for other modules to launch workflows
+- **Agent Factory (Module 9)**: Multi-agent orchestration = Temporal workflows. Each agent call = Temporal activity.
+- **Human Review Engine (Module 12)**: Approval = Temporal signal. Workflow waits until signal received.
+- **Venture Snapshots**: Temporal workflow history is part of the audit trail (not part of snapshots — it's infrastructure state)
+
+---
+
 ## Layer 3: Operational Data (Backup & Point-in-Time Recovery)
 
 Operational data — interviews, experiments, feedback, metrics, traces, costs — is the venture's accumulated intelligence. Losing it is catastrophic.

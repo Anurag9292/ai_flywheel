@@ -2,88 +2,130 @@
 
 ## Overview
 
-AI Flywheel is built in six phases over 12+ weeks. Each phase delivers a working increment — you can use the platform after every phase, with expanding capabilities. The ordering is driven by a single principle: **the Execution Spine comes first**. Every action must be executable, traceable, measurable, attributable, replayable, costed, and versioned from day one.
+AI Flywheel is built in seven phases (Phase 0–6) over 13+ weeks. Each phase delivers a working increment — you can use the platform after every phase, with expanding capabilities. The ordering is driven by a single principle: **the Execution Spine comes first**. Phase 0 proves the bare metal works (Temporal workflows survive restarts, traces capture everything, cost is tracked). Phase 1 proves a real agent can run through that spine. Nothing else proceeds until these foundations are proven solid.
 
 ---
 
-## Phase 1: Execution Spine + Customer Discovery (Week 1-3)
+## Phase 0: Bare Metal (Week 1-2)
 
 ### Goal
 
-Every action is executable, traceable, measurable, attributable, replayable, costed, and versioned. Plus, you can validate whether a venture should exist.
+Prove the execution spine works. A dummy workflow can execute across multiple steps, survive a restart, trace every action, and record cost.
 
-### What Gets Built (12 modules)
+### What Gets Built (5 modules)
 
 | Source System | Module | Purpose |
 |---------------|--------|---------|
-| System 1: Platform Core | **Platform Core** | Database, config, base module class, auth |
-| System 1: Platform Core | **Event Bus** | Async event publication and subscription |
-| System 1: Platform Core | **Task Runtime** | Every operation is a trackable, retryable task |
-| System 1: Platform Core | **Trace & Observability** | Full traces for every action from day 1 |
-| System 1: Platform Core | **Artifact Manager** | Versioned storage for all outputs |
-| System 2: Agent Intelligence | **LLM Gateway** | Unified interface to all LLM providers |
-| System 2: Agent Intelligence | **Prompt Studio** | Create, version, and test prompt templates |
-| System 2: Agent Intelligence | **Agent Factory & Orchestration** | Define and run agents as trackable tasks |
-| System 5: Venture Validation | **Customer Discovery Engine** | AI-assisted customer interviews and analysis |
-| System 6: Learning & Optimization | **Experiment Tracker** | Record experiments from day 1 |
-| System 6: Learning & Optimization | **Metrics & Reward Registry** | Define and track metrics for any venture |
-| System 6: Learning & Optimization | **Cost Optimizer** | Track spend from the first LLM call |
+| System 1: Platform Core | **Platform Core (#1)** | Config, secrets, settings |
+| System 1: Platform Core | **Event Bus (#3)** | Pub/sub with persistence |
+| System 1: Platform Core | **Task Runtime (#4)** | Temporal-based workflow engine |
+| System 1: Platform Core | **Trace & Observability (#5)** | Distributed tracing, error analysis |
+| System 2: Agent Intelligence | **LLM Gateway (#7)** | Multi-provider with cost tracking |
 
 ### Dependencies
 
 - PostgreSQL + pgvector (via Docker)
+- Temporal (local dev server via Docker)
+- At least one LLM API key (OpenAI or Anthropic)
+- Python 3.12+
+
+### Key Technical Decisions
+
+1. **Temporal.io as the workflow engine:** Not a custom Postgres state machine. Workflows survive container restarts via event history replay. This is the foundation everything else builds on.
+2. **Row-Level Security (RLS) on PostgreSQL from the first table creation:** Every query requires `venture_id` context at the DB session level. Security is structural, not application-level.
+3. **In-process event bus with DB persistence:** No external broker yet. Events publish in-process and persist to Postgres for replay and audit.
+4. **All module methods are async:** The event bus, database layer, and API use asyncio throughout. No blocking calls.
+5. **Every query requires venture_id context:** At the DB session level. Cross-venture data access is impossible by construction.
+
+### Testing Strategy
+
+- Unit tests for every core module (config loading, database sessions, event pub/sub)
+- Temporal workflow execution tested with container restart simulation
+- Trace completeness validation (every task produces a trace, every trace has cost attribution)
+- RLS enforcement tested (queries without venture_id context fail)
+- LLM Gateway tested with mock providers for deterministic cost tracking
+
+### Success Criteria
+
+- [ ] A multi-step workflow executes via Temporal
+- [ ] Workflow survives container restart (state hydration works)
+- [ ] Every step is traced with timing, cost, and inputs/outputs
+- [ ] LLM call goes through gateway, cost is recorded
+- [ ] RLS prevents cross-venture data access at the DB level
+
+### Deliverable
+
+The execution spine is proven solid. Nothing else until this works.
+
+---
+
+## Phase 1: First Agent (Week 3-4)
+
+### Goal
+
+A real agent runs a real task through the spine.
+
+### What Gets Built (5 modules)
+
+| Source System | Module | Purpose |
+|---------------|--------|---------|
+| System 1: Platform Core | **Identity & Tenancy (#2)** | Venture scoping, RLS enforcement |
+| System 2: Agent Intelligence | **Agent Factory & Orchestration (#9)** | Config-driven agents, multi-agent patterns as Temporal workflows |
+| System 2: Agent Intelligence | **Prompt Studio (#8)** | Template management, versioning, no UI |
+| System 5: Venture Validation | **Customer Discovery Engine (#26)** | First real use case |
+| System 6: Learning & Optimization | **Cost Optimizer (#35)** | Budget tracking and alerts |
+
+### Dependencies
+
+- Phase 0 complete (execution spine proven)
+- PostgreSQL with RLS configured (from Phase 0)
+- Temporal running (from Phase 0)
 - At least one LLM API key (OpenAI or Anthropic)
 - Python 3.12+, Node.js 20+
 
 ### Key Technical Decisions
 
-1. **Async-first:** All module methods are `async`. The event bus, database layer, and API use asyncio throughout.
-2. **Single PostgreSQL instance:** Start with one database. Partitioning and read replicas come later when growth demands it.
-3. **LLM Gateway abstraction:** All LLM calls go through the gateway — never direct provider SDKs. This enables cost tracking, caching, fallback, and provider switching from day 1.
-4. **Event bus in-process with DB persistence:** Start with an in-memory async event bus with database persistence. No external message broker yet.
-5. **Config-driven agents:** Agents are defined as data (prompt + tools + constraints), not code. This enables experimentation without deploys.
-6. **Task Runtime from day 1:** Everything is a trackable task with status, duration, cost, and parent/child relationships.
-7. **Traces from day 1:** Every action is debuggable. No "we'll add observability later."
+1. **Agents defined as data (YAML/JSON), not code:** Agent behavior is configuration. This enables experimentation without deploys.
+2. **Agent execution = Temporal activity:** Retryable, timeout-able, and independently cost-tracked.
+3. **Multi-agent orchestration = Temporal child workflows:** Fan-out, sequential chains, and coordination all expressed as workflow primitives.
+4. **Human review = Temporal signals:** Workflow pauses, emits a review request event, and resumes only when a signal arrives (approved/rejected/edited). No polling, no timers.
+5. **Memory access control:** Agent blueprints declare which memory tiers they can access. Enforced at runtime.
 
 ### Testing Strategy
 
-- Unit tests for every core module (config loading, database sessions, event pub/sub)
-- Integration test for agent execution end-to-end (define → execute → record outcome → trace → track cost)
-- Task Runtime tested with concurrent task execution and failure/retry scenarios
-- Trace completeness validation (every task produces a trace, every trace has cost attribution)
+- Agent definition and execution end-to-end (define via config → execute → trace → cost)
+- Multi-step workflow with approval pause tested (signal sent, workflow resumes)
 - Customer Discovery Engine tested with mock interview transcripts
-- API endpoint tests with TestClient
-- Fixture: mock LLM responses for deterministic testing
+- Cost tracking validated across multiple agent executions
+- Prompt versioning lifecycle (create v1, update to v2, rollback to v1)
 
 ### Success Criteria
 
-- [ ] Task Runtime executes and tracks tasks with parent/child relationships
-- [ ] Every task produces a complete trace (inputs, outputs, duration, cost, model used)
-- [ ] Agent defined via config executes successfully against LLM Gateway
-- [ ] Prompt versioning works (create v1, update to v2, rollback to v1)
-- [ ] Experiment created and tracked with real outcome data
-- [ ] Cost of every LLM call recorded and attributable to venture + module + task
-- [ ] Event bus delivers events between modules
-- [ ] Artifact Manager stores and versions all outputs
-- [ ] Customer Discovery Engine can analyze interview transcripts and extract pain/WTP signals
-- [ ] Metrics & Reward Registry tracks custom metrics per venture
-- [ ] End-to-end: discover problem → define agent → run as task → trace → measure → cost
+- [ ] Create an agent via config, execute it against a task
+- [ ] Agent execution traces through the full spine (event → task → trace → metric → cost)
+- [ ] Customer Discovery Engine generates interview guide from domain input
+- [ ] Multi-step workflow pauses for approval, resumes when approved
+- [ ] Cost tracked per agent per execution
+
+### Deliverable
+
+A real agent does real work, fully traced and costed.
 
 ### Capabilities Unlocked
 
-After Phase 1, you can:
+After Phase 0 + Phase 1, you can:
 - Run customer discovery interviews with AI-assisted analysis
 - Create and test agents with versioned prompts
-- Execute agents as trackable tasks with full observability
-- Track experiments with proper outcomes
+- Execute agents as Temporal workflows with full observability
+- Multi-agent orchestration with parallel fan-out and sequential chains
+- Human-in-the-loop approval flows that survive indefinite waits
 - See full cost breakdown by venture, module, task, and provider
-- Define and track custom metrics
 - Debug any action through its complete trace
-- Store and version all artifacts
+- All data isolated per venture via RLS at the database level
 
 ---
 
-## Phase 2: Data Foundation + Market Intelligence (Week 4-5)
+## Phase 2: Data Foundation + Market Intelligence (Week 5-6)
 
 ### Goal
 
@@ -103,9 +145,9 @@ Build the research and data layer. The platform can discover markets, ingest dat
 
 ### Dependencies
 
-- Phase 1 complete (Execution Spine)
+- Phase 0 + Phase 1 complete (Execution Spine + First Agent)
 - Object storage for raw data (S3-compatible or local MinIO)
-- pgvector extension installed (from Phase 1)
+- pgvector extension installed (from Phase 0)
 
 ### Key Technical Decisions
 
@@ -151,7 +193,7 @@ After Phase 2, you can:
 
 ---
 
-## Phase 3: Product Design + Offer (Week 6-7)
+## Phase 3: Product Design + Offer (Week 7-8)
 
 ### Goal
 
@@ -170,7 +212,7 @@ Complete the validation pipeline. Design offers, create landing pages, run campa
 
 ### Dependencies
 
-- Phase 1 complete (agents, tasks, traces, experiments)
+- Phase 0-1 complete (agents, tasks, traces, Temporal workflows)
 - Phase 2 complete (market intelligence, data, embeddings)
 - External integration accounts (ad platforms, Stripe, email provider, hosting)
 
@@ -217,7 +259,7 @@ After Phase 3, you can:
 
 ---
 
-## Phase 4: ML + Advanced Agents (Week 8-9)
+## Phase 4: ML + Advanced Agents (Week 9-10)
 
 ### Goal
 
@@ -238,7 +280,7 @@ Move beyond LLM prompts to real ML models, human review workflows, safety/compli
 
 ### Dependencies
 
-- Phase 1-3 complete (spine, data, validation)
+- Phase 0-3 complete (spine, data, validation)
 - Compute resources for training (GPU optional for small models)
 - Model artifact storage (S3-compatible)
 
@@ -290,7 +332,7 @@ After Phase 4, you can:
 
 ---
 
-## Phase 5: Production + Scale (Week 10-11)
+## Phase 5: Production + Scale (Week 11-12)
 
 ### Goal
 
@@ -307,7 +349,7 @@ Production-grade deployment, reliability, simulation testing. Can ship real vent
 
 ### Dependencies
 
-- Phase 1-4 complete
+- Phase 0-4 complete
 - Container registry (for Deployment Engine)
 - Monitoring infrastructure (for Reliability Engine)
 - Production hosting environment
@@ -351,7 +393,7 @@ After Phase 5, you can:
 
 ---
 
-## Phase 6: Flywheel + Visual Builder (Week 12+)
+## Phase 6: Flywheel + Visual Builder (Week 13+)
 
 ### Goal
 
@@ -371,7 +413,7 @@ Complete platform with cross-venture learning, visual tools, multi-channel inter
 
 ### Dependencies
 
-- Phase 1-5 complete (all 39 modules operational)
+- Phase 0-5 complete (all 39 modules operational)
 - Real usage data from earlier phases (for flywheel metrics and pattern extraction)
 - Frontend foundation (React, React Flow)
 
@@ -426,32 +468,35 @@ After Phase 6, you can:
 
 | Phase | Weeks | Modules Built | Cumulative | Key Unlock |
 |-------|-------|---------------|------------|------------|
-| 1 | 1-3 | 12 | 12/39 | Execution spine + customer discovery |
-| 2 | 4-5 | 7 | 19/39 | Market research + data pipeline |
-| 3 | 6-7 | 6 | 25/39 | Full validation pipeline + Evidence Ladder |
-| 4 | 8-9 | 8 | 33/39 | ML models + human review + safety |
-| 5 | 10-11 | 4 | 37/39 | Production deployment + reliability |
-| 6 | 12+ | 2 + UI + integrations | 39/39 | Flywheel + visual builder + meta-learning |
+| 0 | 1-2 | 5 | 5/39 | Execution spine proven (Temporal + tracing + cost) |
+| 1 | 3-4 | 5 | 10/39 | First agent runs real work through spine |
+| 2 | 5-6 | 7 | 17/39 | Market research + data pipeline |
+| 3 | 7-8 | 6 | 23/39 | Full validation pipeline + Evidence Ladder |
+| 4 | 9-10 | 8 | 31/39 | ML models + human review + safety |
+| 5 | 11-12 | 4 | 35/39 | Production deployment + reliability |
+| 6 | 13+ | 4 + UI + integrations | 39/39 | Flywheel + visual builder + meta-learning |
 
 ### Dependency Graph
 
 ```
-Phase 1 (Execution Spine + Discovery)
+Phase 0 (Bare Metal — Execution Spine)
     │
-    ├── Phase 2 (Data + Market Intelligence)
-    │       │
-    │       └── Phase 3 (Product Design + Offer)
-    │               │
-    │               └── Phase 4 (ML + Advanced Agents)
-    │                       │
-    │                       └── Phase 5 (Production + Scale)
-    │                               │
-    │                               └── Phase 6 (Flywheel + Visual Builder)
-    │
-    └── [Each phase depends on all previous phases]
+    └── Phase 1 (First Agent)
+            │
+            ├── Phase 2 (Data + Market Intelligence)
+            │       │
+            │       └── Phase 3 (Product Design + Offer)
+            │               │
+            │               └── Phase 4 (ML + Advanced Agents)
+            │                       │
+            │                       └── Phase 5 (Production + Scale)
+            │                               │
+            │                               └── Phase 6 (Flywheel + Visual Builder)
+            │
+            └── [Each phase depends on all previous phases]
 ```
 
-Phases are strictly sequential. Each phase builds on capabilities from all previous phases. This is intentional — the Execution Spine must be solid before anything else runs on it, market intelligence must exist before you can design products, etc.
+Phases are strictly sequential. Each phase builds on capabilities from all previous phases. This is intentional — Phase 0 proves the execution spine is solid (Temporal, tracing, cost tracking) before any real work runs on it. Phase 1 proves a real agent can execute through the spine. Nothing else proceeds until these foundations are proven.
 
 ---
 
@@ -459,12 +504,13 @@ Phases are strictly sequential. Each phase builds on capabilities from all previ
 
 | Risk | Mitigation |
 |------|-----------|
-| LLM API instability | LLM Gateway with fallback providers from Phase 1 |
-| Cost overrun during development | Cost Optimizer active from Phase 1; every LLM call tracked |
+| LLM API instability | LLM Gateway with fallback providers from Phase 0 |
+| Cost overrun during development | Cost tracking active from Phase 0; Cost Optimizer in Phase 1; every LLM call tracked |
+| Workflow state loss | Temporal.io guarantees durable execution from Phase 0; workflows survive container restarts |
 | Module coupling | Event bus enforces loose coupling; no direct module imports |
 | Scope creep per module | Each module has clear contract; extras become separate modules |
-| Database performance at scale | Single DB in Phase 1, partitioning planned from schema design |
-| "We'll add observability later" | Trace & Observability in Phase 1; non-negotiable |
+| Database performance at scale | Single DB in Phase 0, partitioning planned from schema design |
+| "We'll add observability later" | Trace & Observability in Phase 0; non-negotiable |
 | Validation takes too long | Customer Discovery in Phase 1; can validate ideas before building |
 | Over-engineering early | Config-driven agents mean you can change behavior without code changes |
 | Integration fragility | Tool Forge abstracts external APIs; failures isolated to tool layer |

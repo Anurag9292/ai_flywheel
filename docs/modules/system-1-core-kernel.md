@@ -44,6 +44,7 @@ Configuration drift and misconfiguration errors detected by Trace & Observabilit
 
 - Manages user accounts with SSO integration (SAML, OIDC), MFA enforcement, and session management across all platform interfaces
 - Implements venture-level tenancy with strict data isolation guarantees — no data from one venture is ever accessible to another unless explicitly shared
+- PostgreSQL Row-Level Security (RLS) is enforced at the database layer — every query requires `venture_id` context set in the session, making cross-venture data leakage impossible even from LLM-generated queries
 - Provides a fine-grained permission system with roles (owner, admin, operator, viewer, agent) and resource-level access controls
 - Issues and manages API keys with scoping (per-venture, per-module, per-action), rate limits, and automatic rotation schedules
 - Tracks usage quotas per venture with configurable hard/soft limits across compute, storage, LLM calls, and API requests
@@ -104,18 +105,18 @@ Event delivery failures and processing latencies feed back to optimize routing, 
 
 ## Module 4: Task Runtime
 
-**Work queues, status tracking, retries, dependencies, bulk execution at scale**
+**Durable workflow execution built on Temporal.io — orchestration, retries, scheduling, and visibility**
 
 ### What It Does
 
-- Manages distributed work queues with priority levels, ensuring critical tasks (deployments, human reviews) execute before background work
-- Tracks task status through lifecycle states (queued, claimed, running, succeeded, failed, cancelled, retrying) with full state machine semantics
-- Implements configurable retry policies with exponential backoff, jitter, max attempts, and dead-letter routing for permanently failed tasks
-- Supports DAG-based task dependencies — tasks can declare prerequisites and the runtime ensures correct execution ordering
-- Provides bulk execution capabilities for running thousands of tasks in parallel with configurable concurrency limits and backpressure
-- Handles task timeouts, heartbeats, and zombie detection — reclaiming tasks from workers that die mid-execution
-- Exposes a task scheduling system with cron-like recurring tasks, one-off delayed execution, and rate-limited batch processing
-- Maintains task execution history with duration, resource usage, and outcome for capacity planning and optimization
+- Built on Temporal.io for durable execution — workflows survive container restarts automatically with no custom state management required
+- Workflow state is persisted in Temporal's event history — automatic state hydration on recovery without explicit checkpointing
+- Activities (individual tasks) are retryable with configurable backoff and timeout — Temporal handles retry scheduling, dead-letter routing, and failure classification
+- Workflows can pause indefinitely waiting for signals (human approval, external triggers) — no polling or timeout hacks needed
+- Supports child workflows for composable orchestration (a validation pipeline is a workflow of workflows) enabling reusable building blocks
+- Built-in visibility UI shows all running, failed, queued, and completed workflows — searchable by workflow type, status, venture, and custom attributes
+- Timer-based scheduling (wait 3 days for approval, then auto-escalate) — durable timers that survive infrastructure events
+- Workflow versioning allows updating logic without breaking in-flight executions — old workflows complete on old code, new workflows use new code
 
 ### Feedback Loop
 

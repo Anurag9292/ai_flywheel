@@ -17,7 +17,8 @@ The same backend serves all interaction surfaces — a conversational Slack bot 
 | Frontend | Next.js + TypeScript | SSR, App Router, API routes, Vercel AI SDK |
 | Database | PostgreSQL | Relational, JSONB, proven scale |
 | Vector Store | pgvector (+ optional Qdrant) | Co-located with relational data |
-| Task Queue | Celery + Redis | Async execution, ML jobs, background tasks |
+| Task Queue | Temporal.io | Durable execution, workflow orchestration, long-running tasks, automatic state recovery |
+| Workflow Engine | Temporal.io | Durable execution, automatic state hydration, infinite retries, human-in-the-loop pauses |
 | Event Bus | Redis Streams (→ Kafka later) | Inter-module communication |
 | Cache | Redis | Prompt caching, response dedup, session state |
 | Object Storage | MinIO (local) / S3 (prod) | Datasets, artifacts, documents |
@@ -50,7 +51,7 @@ The same backend serves all interaction surfaces — a conversational Slack bot 
 - `structlog` — structured logging
 - `httpx` — async HTTP client
 - `litellm` — unified LLM interface
-- `celery` — distributed task execution
+- `temporalio` — durable workflow execution
 - `slack-bolt` — Slack bot framework
 
 ---
@@ -178,24 +179,34 @@ The same backend serves all interaction surfaces — a conversational Slack bot 
 
 ---
 
-### Celery + Redis
+### Temporal.io
 
-**What it does:** Executes background tasks — agent runs, ML training jobs, data ingestion pipelines, scheduled maintenance, bulk operations.
+**What it does:** Orchestrates all multi-step workflows — agent execution chains, human-in-the-loop approval waits, validation pipelines, feature loops. Every long-running operation (minutes, hours, or days) is a Temporal workflow.
 
 **Why this choice:**
-- Mature, well-understood distributed task queue
-- Redis as broker is fast and simple
-- Supports task priorities, retries, rate limiting, and chains/chords
-- Canvas (workflow primitives) enables complex task DAGs
-- Worker scaling is horizontal — add more workers for more throughput
+- Workflows in this platform routinely pause for hours/days (human approval), fan out to multiple agents in parallel, and need to survive container restarts. Building this from scratch on Postgres would reinvent Temporal badly.
+- Durable execution: if a container dies mid-workflow, Temporal automatically resumes the workflow on another worker by replaying its event history. Zero custom checkpointing code.
+- Native workflow state management — no hand-rolled state machines in Postgres.
+- Built-in retries with exponential backoff, timeouts, and cancellation.
+- Signals enable human-in-the-loop: workflows wait indefinitely for external input (approval, rejection, edits) without holding resources.
+- Child workflows enable fan-out/fan-in for multi-agent orchestration.
+- Full observability: every workflow has a complete event history, searchable and replayable.
 
 **Why not alternatives:**
-- **Dramatiq**: Lighter but smaller community, fewer features
-- **Temporal**: More powerful workflow engine but heavier operational burden at this stage
-- **RQ (Redis Queue)**: Too simple for our needs (no task chaining, limited monitoring)
-- **AWS Step Functions**: Cloud-locked, harder to develop locally
+- **Celery + Redis**: No durable execution, no native workflow state. Task chains are fragile — if a worker dies mid-chain, state is lost. No built-in mechanism for long pauses (human approval). Would require building a state machine on top, which is reinventing Temporal poorly.
+- **Airflow**: Batch-oriented, not real-time. DAGs are static, not dynamic. Not designed for sub-second task dispatch or indefinite waits.
+- **Custom Postgres state machine**: Fragile, impossible to get right. Every edge case (partial failures, retries, timeouts, concurrent updates, exactly-once semantics) requires custom code that Temporal handles automatically.
+- **AWS Step Functions**: Cloud-locked, harder to develop locally, limited execution history.
 
-**Scaling path:** Celery scales horizontally by adding workers. If we outgrow Celery's coordination model, migrate critical workflows to Temporal while keeping Celery for simple background tasks.
+**Scaling path:** Temporal Cloud for production (zero operational overhead, auto-scaling). Self-hosted Temporal for dev/staging. Workers scale horizontally — add more worker processes for more throughput.
+
+**How it maps to our modules:**
+- **Task Runtime (Module 4)** becomes a thin wrapper around Temporal — task submission, status tracking, and result retrieval all delegate to Temporal APIs.
+- **Agent orchestration** = Temporal workflows. Multi-agent coordination, sequential chains, and parallel fan-out are all workflow primitives.
+- **LLM calls** = Temporal activities. Each call is retryable, timeout-able, and cost-tracked independently.
+- **Human review** = Temporal signals. A workflow pauses, emits a review request event, and resumes only when a signal arrives (approved/rejected/edited).
+
+**Key benefit:** If a container dies mid-workflow, Temporal automatically resumes the workflow on another worker by replaying its event history. Zero custom checkpointing code. This eliminates an entire class of bugs (partial execution, orphaned state, lost progress) that plague custom workflow implementations.
 
 ---
 
@@ -204,7 +215,7 @@ The same backend serves all interaction surfaces — a conversational Slack bot 
 **What it does:** Inter-module event bus for feedback loops. Modules publish events, other modules subscribe and react.
 
 **Why this choice:**
-- Already running Redis for Celery and caching (no new infrastructure)
+- Already running Redis for caching (no new infrastructure)
 - Consumer groups provide pub/sub with acknowledgment (events aren't lost)
 - Sufficient throughput for our current scale (millions of events/day)
 - Simple to reason about and debug
@@ -228,7 +239,7 @@ The same backend serves all interaction surfaces — a conversational Slack bot 
 - TTL-based expiration for cache invalidation
 - Pub/sub for real-time notifications
 - Atomic operations for counters and rate limiting
-- Already in the stack (shared with Celery broker and event bus)
+- Already in the stack (shared with event bus via Redis Streams)
 
 **Specific uses:**
 - **Prompt cache**: Identical LLM calls return cached responses (huge cost savings)
@@ -236,8 +247,11 @@ The same backend serves all interaction surfaces — a conversational Slack bot 
 - **Session state**: Track multi-turn conversations across channels (Slack, web, CLI)
 - **Rate limiting**: Per-venture, per-model API rate limiting
 - **Real-time metrics**: Aggregate counters before flushing to Postgres
+- **Event bus transport**: Redis Streams for inter-module pub/sub
 
 **Scaling path:** Redis Cluster for horizontal scaling. For very large caches, add a secondary layer (e.g., DragonflyDB or KeyDB for higher throughput).
+
+> **Note:** Redis serves as the caching and event streaming layer only. Workflow orchestration and task execution are handled by Temporal.io, not Redis-backed queues.
 
 ---
 
@@ -267,7 +281,7 @@ The same backend serves all interaction surfaces — a conversational Slack bot 
 
 **Why this choice:**
 - Reproducible environment across all developers
-- `docker compose up` starts Postgres, Redis, MinIO, API, Celery worker, Slack bot, frontend
+- `docker compose up` starts Postgres, Redis, MinIO, Temporal, API, workers, Slack bot, frontend
 - Isolation prevents dependency conflicts
 - Same container images can deploy to any cloud
 - Easy to add new services (just add to compose file)
@@ -293,7 +307,7 @@ The same backend serves all interaction surfaces — a conversational Slack bot 
 | `httpx` | Async HTTP client. Used for LLM API calls, web scraping, external integrations. |
 | `litellm` | Unified interface to 100+ LLM providers. Powers the LLM Gateway's model abstraction. |
 | `structlog` | Structured logging for observability. JSON output, context binding, processor pipeline. |
-| `celery` | Distributed task execution for agents and ML jobs. Canvas for complex workflows. |
+| `temporalio` | Temporal Python SDK for workflow and activity definitions. Powers all durable execution. |
 | `slack-bolt` | Slack bot framework. Handles events, slash commands, interactive components, modals. |
 
 ### ML/AI
@@ -305,6 +319,15 @@ The same backend serves all interaction surfaces — a conversational Slack bot 
 | `scikit-learn` | Classical ML models for scoring, classification, clustering. Fast and interpretable. |
 | `sentence-transformers` | Generate embeddings for semantic search, similarity, and RAG. |
 | `transformers` | Hugging Face models for fine-tuning and inference of open models. |
+
+### Evaluation
+
+| Library | Purpose |
+|---------|---------|
+| `ragas` | LLM evaluation framework for RAG quality, faithfulness, and relevance scoring. |
+| `deepeval` | LLM output evaluation with custom metrics, hallucination detection, and test-driven development for LLMs. |
+
+> **Evaluation: Ragas + DeepEval** — outsourced LLM evaluation rather than building from scratch. These frameworks provide battle-tested metrics (faithfulness, answer relevancy, context precision) and integrate with our Experiment Tracker for automated quality gates.
 
 ### Infrastructure
 
