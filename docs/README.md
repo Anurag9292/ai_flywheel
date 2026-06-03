@@ -48,3 +48,4 @@ The platform answers two questions traditional AI frameworks ignore: **"Should t
 | [package-structure.md](package-structure.md) | Directory layout, BaseModule class, channel architecture |
 | [database-schema.md](database-schema.md) | 30+ tables across all 8 systems |
 | [build-phases.md](build-phases.md) | 6-phase roadmap, execution spine first |
+| [temporal-patterns.md](temporal-patterns.md) | Temporal.io patterns, determinism rules, frontend integration |
