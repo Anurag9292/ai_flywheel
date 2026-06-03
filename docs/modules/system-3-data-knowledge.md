@@ -89,6 +89,9 @@ False positive anomaly alerts (flagged but actually normal) refine detection thr
 - Provides embedding versioning: when models are updated, manages the migration of all stored vectors with zero-downtime reindexing
 - Implements chunking strategies for long documents: sentence, paragraph, semantic, and sliding window with overlap — optimized per content type
 - Supports cross-modal retrieval: find images by text description, find code by natural language query, find similar documents by example
+- **Versioned collections** — embeddings are stored in namespaced collections, each tied to a specific model and dimension. Never mix vectors from different models in the same similarity search. When upgrading models, the engine creates a v2 collection, routes new data there, and runs a background Temporal workflow to gradually re-embed older documents (querying v1 until migration completes).
+- **Model migration workflows** — background Temporal workflow re-embeds documents in batches when switching to a better/cheaper model. System serves from the old collection until new collection is fully populated. Old collection kept for 30-day rollback window.
+- **Query routing** — automatically routes similarity searches to the active collection for the venture. Embeds the query with the same model that produced the collection's vectors.
 
 ### Feedback Loop
 
