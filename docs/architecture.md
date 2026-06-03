@@ -373,6 +373,81 @@ Every LLM call, every API hit, every compute cycle has a cost attached. Cost is 
 
 ---
 
+## Critical Complexity Pipelines
+
+Not every module is a single agent wrapping an API call. Some components determine the quality of an entire venture and need deep decomposition into multi-agent pipelines with independent evaluation and experimentation at each step.
+
+### The Principle
+
+For any venture, certain components are **quality-determining** — if they work well, the whole product works. If they're shallow ("just call GPT and hope"), the product is unreliable slop.
+
+The platform's job is to:
+1. **Identify** which components are critical (from error analysis, metric bottlenecks, or founder flagging)
+2. **Decompose** into a pipeline of specialized sub-agents (not one monolithic agent)
+3. **Evaluate** each step independently with its own metrics
+4. **Experiment** at each step to find the best approach (prompts, models, strategies)
+5. **Research** — when a sub-problem is hard, actively search for papers, techniques, and sample implementations rather than just throwing a prompt at it
+6. **Compound** — improvements at each step multiply together
+
+### When to Use Deep Pipelines vs. Single Agents
+
+| Situation | Approach |
+|-----------|----------|
+| Simple, well-defined task (send email, format data) | Single agent, single shot |
+| Complex but doesn't determine product quality (logging, notifications) | Single agent, good enough |
+| Quality-determining component where errors are visible to users | **Deep pipeline with eval + experimentation** |
+| Component where "just use GPT" produces unreliable results | **Deep pipeline — the problem needs research, not wrappers** |
+
+### The Research Imperative
+
+For critical complexity points, the system should NOT just "try a prompt and see." It should:
+- Search academic papers for proven approaches (via Market & Signal Intelligence)
+- Understand what methods work for this specific sub-problem
+- When it doesn't know how to solve something: ask the founder, suggest papers, request sample implementations
+- Build on research, not on hope
+
+This prevents the platform from becoming "GPT wrapper + database" and pushes it toward genuine intelligence.
+
+### Examples of Critical Complexity Pipelines
+
+**Knowledge Graph Construction (RAG ventures):**
+- 8+ specialized sub-agents (structure analysis → ontology → entity extraction → resolution → relationships → graph assembly → schema export)
+- Each step has independent eval metrics
+- Each step is experimentable
+- The exported schema constrains query-time generation (prevents hallucination)
+
+**Candidate Screening (HR ventures):**
+- Multi-dimensional scoring (skills match + experience relevance + culture fit + growth potential)
+- Bias detection as a parallel evaluation pipeline
+- Each scoring dimension independently tunable and experimentable
+
+**Lead Qualification (Sales ventures):**
+- Signal aggregation from multiple sources (company data + buyer intent + tech stack + hiring patterns)
+- Scoring model that weights signals differently per ICP
+- Each signal source independently evaluatable
+
+### Visual Pipeline Builder
+
+Critical complexity pipelines are built and managed through a visual pipeline builder UI:
+- Drag specialized agents onto a canvas
+- Wire them together (outputs → inputs)
+- See results in real-time (graph view for KG, metrics for eval)
+- Run experiments comparing pipeline variants
+- Each agent in the pipeline is independently configurable
+
+This is a core UI component of the platform — it works for KG construction, retrieval pipelines, evaluation pipelines, scoring pipelines, or any multi-step process where quality matters.
+
+### How Experimentation Integrates
+
+Each step in a critical pipeline connects to the Experiment Tracker:
+- Define variants for any step (different prompt, different model, different strategy)
+- Run traffic through the pipeline with different step configurations
+- Measure impact on downstream quality (not just the step's own metric, but the END metric)
+- Identify which steps have the most leverage (where improvement matters most)
+- Prioritize research/effort on the highest-leverage steps
+
+---
+
 ## 7. Interaction Architecture
 
 ### The Conversation Router
