@@ -37,7 +37,9 @@ The platform answers two questions traditional AI frameworks ignore: **"Should t
 | [validation-config.md](validation-config.md) | Override, skip, or customize validation — presets, budgets, parallel execution |
 | [integrations.md](integrations.md) | Tool Forge scope, automation tiers, external service catalog |
 | [interaction-model.md](interaction-model.md) | Multi-channel: Slack + Web App + CLI, Conversation Router |
+| [feature-loop.md](feature-loop.md) | Inner development cycle — signal → build → ship → learn within a running venture |
 | [feedback-loops.md](feedback-loops.md) | 6 loop types, cross-system flows, meta-learning |
+| [state-management.md](state-management.md) | Versioning, snapshots, backup, recovery — revert anything |
 
 ### Implementation
 | Document | Description |
