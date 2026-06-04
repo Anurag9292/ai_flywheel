@@ -53,3 +53,4 @@ The platform answers two questions traditional AI frameworks ignore: **"Should t
 | [infrastructure.md](infrastructure.md) | Hosting, compute, cost breakdown, scale-to-zero philosophy |
 | [high-availability.md](high-availability.md) | HA architecture, failure scenarios, scaling model |
 | [auth-rbac.md](auth-rbac.md) | Clerk + Neon RLS via Custom JWTs, per-venture roles, permissions |
+| [reference-implementations.md](reference-implementations.md) | Open-source references per build phase — what to steal, what to skip |
