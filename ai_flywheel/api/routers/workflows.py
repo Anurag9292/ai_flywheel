@@ -25,9 +25,9 @@ class WorkflowStartedResponse(BaseModel):
 @router.post("/sample", response_model=WorkflowStartedResponse)
 async def start_sample_workflow(request: StartWorkflowRequest) -> WorkflowStartedResponse:
     """Start the sample workflow to test the execution spine."""
-    import uuid7
+    import uuid
 
-    workflow_id = f"sample-{uuid7.uuid7()}"
+    workflow_id = f"sample-{uuid.uuid4()}"
 
     await start_workflow(
         workflow_class=SampleWorkflow,

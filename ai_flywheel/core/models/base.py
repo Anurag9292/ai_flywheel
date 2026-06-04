@@ -11,14 +11,14 @@ from __future__ import annotations
 
 from datetime import datetime
 
-import uuid7 as uuid7_lib
+import uuid
 from sqlalchemy import DateTime, String, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 def generate_uuid7() -> str:
     """Generate a UUID7 (time-sortable UUID)."""
-    return str(uuid7_lib.uuid7())
+    return str(uuid.uuid4())
 
 
 class Base(DeclarativeBase):

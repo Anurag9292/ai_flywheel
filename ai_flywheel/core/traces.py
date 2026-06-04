@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from typing import Any, ParamSpec, TypeVar
 
 import structlog
-import uuid7 as uuid7_lib
+import uuid
 
 logger = structlog.get_logger()
 
@@ -29,7 +29,7 @@ R = TypeVar("R")
 
 
 def _generate_id() -> str:
-    return str(uuid7_lib.uuid7())
+    return str(uuid.uuid4())
 
 
 class SpanData:
