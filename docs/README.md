@@ -50,3 +50,4 @@ The platform answers two questions traditional AI frameworks ignore: **"Should t
 | [build-phases.md](build-phases.md) | 6-phase roadmap, execution spine first |
 | [temporal-patterns.md](temporal-patterns.md) | Temporal.io patterns, determinism rules, frontend integration |
 | [infrastructure.md](infrastructure.md) | Hosting, compute, cost breakdown, scale-to-zero philosophy |
+| [auth-rbac.md](auth-rbac.md) | Clerk + Neon RLS via Custom JWTs, per-venture roles, permissions |
