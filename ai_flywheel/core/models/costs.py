@@ -31,4 +31,4 @@ class CostRecord(BaseModel, VentureScopedMixin):
 
     # Context
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    extra: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)

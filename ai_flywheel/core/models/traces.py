@@ -39,4 +39,4 @@ class TraceSpan(BaseModel, VentureScopedMixin):
     input_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     output_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    extra: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
