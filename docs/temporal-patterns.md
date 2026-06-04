@@ -577,3 +577,213 @@ Key properties:
 - **Cost-controlled** — batches with sleep intervals prevent API cost spikes
 - **Resumable** — if worker dies mid-migration, Temporal resumes from last completed batch
 - **Rollbackable** — old collection kept for 30 days, can reactivate instantly
+
+---
+
+## Production Scaling Pitfalls
+
+Four critical operational traps that emerge only at production scale — when workflows are long-running, instances number in hundreds, and infrastructure is serverless.
+
+---
+
+### 4. The 50K Event Wall (History Limit)
+
+Temporal records every single activity execution, timer, and state change into a persistent history.
+
+**The Risk:** Temporal has a strict limit on workflow history size. If a single workflow reaches 50,000 events (or exceeds 50MB in size), Temporal will forcefully terminate it to protect the cluster. For long-running simulation pipelines or recursive agent loops that iterate continuously over days or weeks, you will hit this wall surprisingly fast.
+
+**The Fix:** Implement the `ContinueAsNew` pattern. Long-running supervisor workflows must track their own loop count or event size. Once an agent loop completes a checkpoint (e.g., 100 iterations), the workflow cleanly calls `continue_as_new()`, passing current state into a brand-new workflow instance with a reset event history.
+
+```python
+@workflow.defn
+class LongRunningAgentLoop:
+    """Supervisor that iterates indefinitely but resets history periodically."""
+    
+    @workflow.run
+    async def run(self, state: LoopState):
+        iteration = state.iteration_offset
+        
+        while True:
+            # Execute one iteration of the agent loop
+            result = await workflow.execute_activity(
+                run_agent_iteration,
+                args=[state.context, iteration],
+                start_to_close_timeout=timedelta(minutes=5),
+            )
+            
+            state.accumulate(result)
+            iteration += 1
+            
+            # Check if we should continue-as-new (reset history)
+            if iteration % 100 == 0:
+                # Pass current state to fresh workflow instance
+                workflow.continue_as_new(
+                    args=[LoopState(
+                        context=state.context,
+                        iteration_offset=iteration,
+                        accumulated_results=state.accumulated_results,
+                    )]
+                )
+            
+            # Normal sleep between iterations
+            await workflow.sleep(timedelta(minutes=1))
+```
+
+**Rule of thumb:** Any workflow that might exceed 1,000 activities should implement `continue_as_new`. Set the threshold well below 50K to leave headroom.
+
+---
+
+### 5. The Serverless DB Connection Spike (Neon Cold Starts)
+
+Scale-to-zero compute is a massive cost-saver, but it creates a coordination hazard when combined with durable timers.
+
+**The Risk:** Suppose you have 500 different agent workflows all sleeping on `workflow.sleep(timedelta(days=7))`. When that week ends, all 500 workflows wake up at the exact same second and execute an activity that queries Neon. If the Neon compute node was sleeping (scaled to zero), it receives 500 simultaneous connection requests during a cold start. This creates massive connection timeouts and causes Temporal workers to drop activities due to database unavailability.
+
+**The Fix:** Introduce jitter (randomized delay) to any long-running timers so waking workflows are distributed across a wider time window.
+
+```python
+import random
+
+@workflow.defn
+class ScheduledOutreachWorkflow:
+    @workflow.run
+    async def run(self, prospect: Prospect, schedule: Schedule):
+        for step in schedule.steps:
+            # Base sleep + random jitter (spread over 5 minutes)
+            base_duration = step.delay
+            jitter = timedelta(seconds=random.randint(0, 300))
+            
+            # NOTE: This is safe because Temporal records the sleep duration
+            # in history on first execution. On replay, it uses the recorded
+            # duration, not a new random value. Determinism is preserved.
+            await workflow.sleep(base_duration + jitter)
+            
+            # By now, wake-ups are distributed across a 5-minute window
+            await workflow.execute_activity(
+                send_outreach_step,
+                args=[prospect, step],
+                start_to_close_timeout=timedelta(minutes=2),
+                retry_policy=RetryPolicy(
+                    initial_interval=timedelta(seconds=2),
+                    backoff_coefficient=2.0,
+                    maximum_attempts=5,
+                ),
+            )
+```
+
+**Additionally:** Configure connection pooling with aggressive retries tuned to tolerate Neon's 1-3 second cold-start window:
+
+```python
+engine = create_async_engine(
+    database_url,
+    pool_size=20,
+    max_overflow=10,
+    pool_pre_ping=True,
+    pool_recycle=300,  # Recycle connections every 5 min (avoid stale after Neon sleep)
+    connect_args={
+        "command_timeout": 10,  # 10s timeout (covers Neon cold start)
+        "server_settings": {"statement_timeout": "30000"},  # 30s statement timeout
+    },
+)
+```
+
+---
+
+### 6. Worker Memory Starvation (Sticky Execution OOMs)
+
+To optimize performance, Temporal uses "Sticky Execution" — it caches workflow state in the memory of a specific worker so it doesn't have to replay the entire history from scratch on every activity step.
+
+**The Risk:** If you run cost-effective Fly.io micro-instances (512MB or 1GB RAM) as Temporal workers, and hundreds of complex multi-agent workflows execute concurrently, the worker's memory fills up with cached workflow states. When the memory limit is breached, the worker suffers an Out-Of-Memory (OOM) crash, forcing Temporal to migrate all workflows to other workers — causing a cascading failure across the compute fleet.
+
+**The Fix:** Set an explicit maximum cache size limit on the Temporal worker configuration. This forces the worker to cleanly evict older, inactive workflows from memory. If a workflow needs to advance, the worker pulls its history from Temporal Cloud and replays it — slightly more CPU, but completely immunized against memory exhaustion.
+
+```python
+from temporalio.worker import Worker
+
+worker = Worker(
+    client=temporal_client,
+    task_queue="ai-flywheel-main",
+    workflows=[...],
+    activities=[...],
+    # Memory management
+    max_cached_workflows=200,  # Evict beyond this (default is much higher)
+    # For 1GB worker: 200 workflows × ~2-5MB each = 400MB-1GB
+    # Adjust based on your instance size and workflow complexity
+)
+```
+
+**Sizing guide:**
+
+| Worker RAM | `max_cached_workflows` | Rationale |
+|-----------|----------------------|-----------|
+| 512MB | 50-100 | Leave 200MB for runtime overhead |
+| 1GB | 150-200 | Comfortable for most workloads |
+| 2GB | 400-500 | High-concurrency scenarios |
+
+If a workflow is evicted and later needs to advance, Temporal replays it from history. This is slightly slower (~100ms overhead) but prevents OOM entirely.
+
+---
+
+### 7. The Agent Token Bloat (State Serialization Tax)
+
+As agents converse, debate, and pull documents via LLM calls, their conversational context grows.
+
+**The Risk:** If Temporal workflow state stores the entire raw JSON payload of every LLM interaction, token context, and document chunk, the workflow state balloons. Because Temporal must serialize and transmit this entire state object across the network to its persistence layer on every single workflow state transition, network I/O costs and step latencies spike drastically.
+
+**The Fix:** Never store raw, large LLM context strings inside the main Temporal workflow state. Store conversational histories and large text chunks in Redis or a dedicated Postgres table. Only store ID references within the Temporal workflow parameters. Activities query the fast data store using those keys when they execute.
+
+```python
+# ❌ WRONG — Storing full context in workflow state
+@workflow.defn
+class AgentWorkflow:
+    def __init__(self):
+        self.full_conversation = []  # Grows to megabytes!
+        self.retrieved_documents = []  # Entire doc chunks stored!
+    
+    @workflow.run
+    async def run(self, task):
+        for step in task.steps:
+            # Each result adds ~10KB to workflow state
+            result = await workflow.execute_activity(run_agent_step, ...)
+            self.full_conversation.append(result.messages)  # State bloats
+            self.retrieved_documents.extend(result.chunks)  # State explodes
+
+
+# ✓ CORRECT — Store references only, data lives in Redis/Postgres
+@workflow.defn
+class AgentWorkflow:
+    def __init__(self):
+        self.conversation_id: str | None = None  # Just an ID (~36 bytes)
+        self.step_count: int = 0
+    
+    @workflow.run
+    async def run(self, task):
+        # Activity stores conversation in Redis, returns only the ID
+        self.conversation_id = await workflow.execute_activity(
+            initialize_conversation,
+            args=[task],
+            start_to_close_timeout=timedelta(seconds=10),
+        )
+        
+        for step in task.steps:
+            # Activity reads conversation from Redis, appends, returns summary
+            summary = await workflow.execute_activity(
+                run_agent_step,
+                args=[self.conversation_id, step],
+                start_to_close_timeout=timedelta(minutes=5),
+            )
+            self.step_count += 1
+            # Workflow state stays tiny: just conversation_id + step_count
+```
+
+**What lives where:**
+
+| Data | Storage | Why |
+|------|---------|-----|
+| Workflow coordination state (step count, status flags, IDs) | Temporal workflow state | Small, needed for orchestration logic |
+| Full conversation history (messages, token counts) | Redis (with TTL) or Postgres | Large, only needed by activities during execution |
+| Retrieved document chunks | Postgres (chunks table) | Large, shared across activities via chunk_ids |
+| LLM responses (full JSON) | Postgres (trace_spans table) | Observability, not needed for orchestration |
+| Intermediate computation results | Redis (with TTL) | Ephemeral, large, only referenced by ID |
+
+**Rule of thumb:** If a piece of data is > 1KB and only needed by activities (not by workflow orchestration logic), store it externally and pass only the ID through the workflow.
