@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import structlog
-import uuid7 as uuid7_lib
+import uuid
 
 logger = structlog.get_logger()
 
@@ -31,7 +31,7 @@ class Event:
         venture_id: str | None = None,
         correlation_id: str | None = None,
     ):
-        self.id = str(uuid7_lib.uuid7())
+        self.id = str(uuid.uuid4())
         self.event_type = event_type
         self.source_module = source_module
         self.payload = payload
