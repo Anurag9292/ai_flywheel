@@ -1,0 +1,21 @@
+[importlinter]
+root_package = ai_flywheel
+
+[importlinter:contract:1]
+name = Independent Modules
+type = independence
+modules =
+    ai_flywheel.modules.agent_runtime
+    ai_flywheel.modules.data_knowledge
+    ai_flywheel.modules.ml_evaluation
+    ai_flywheel.modules.product_intelligence
+    ai_flywheel.modules.experimentation
+    ai_flywheel.modules.deployment
+    ai_flywheel.modules.cross_venture
+
+[importlinter:contract:2]
+name = Modules Depend Only On Core
+type = layers
+layers =
+    ai_flywheel.modules
+    ai_flywheel.core
