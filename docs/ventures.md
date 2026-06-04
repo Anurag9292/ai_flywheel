@@ -227,6 +227,397 @@ The feedback loops engage:
 
 ---
 
+## Happy Flow Example: ProspectForge (AI-Native Personalized Outbound)
+
+ProspectForge is an AI-native personalized outbound system for B2B founders and sales teams — people who need high-reply-rate outreach but can't afford (or don't want) the "spray and pray" approach of existing tools.
+
+**The Core Insight**: Most outbound tools do `template + {first_name} + {company} = "personalized"` email → 2% reply rate → spam. ProspectForge deeply researches each prospect, identifies a genuine contextual reason to reach out, and crafts messages around THEIR specific situation → 12-18% reply rate → real conversations.
+
+**Why this venture is ideal for the platform:**
+
+| Platform Capability | ProspectForge Usage |
+|--------------------|--------------------|
+| Multi-agent pipeline | Research → Profile → Connection → Message → Sequence |
+| Critical complexity | Research pipeline MUST be deep and factual (not slop) |
+| Thompson Sampling | Message variants, send times, sequence lengths, channel order |
+| RAG | Prospect's content, company data, past interactions |
+| Knowledge Graph | Relationship mapping, warm intro paths, ICP graphs |
+| Temporal workflows | Sequences with sleep (days/weeks), reply detection, retries |
+| Per-step eval | Each research step evaluated (factual? specific? fresh?) |
+| Cost optimization | Route research to cheap models, only use GPT-4o for final message |
+| Cross-venture learning | Outreach patterns transfer between ventures |
+| Dogfooding | You use ProspectForge to sell MatchHire and IntelliBase |
+
+---
+
+### Stage 1: "Should this exist?" (Week 1)
+
+**Market & Signal Intelligence** finds:
+- $7B+ outbound tools market, growing 25%/yr
+- Existing tools (Apollo, Outreach, Salesloft) focus on volume, not depth
+- Active dissatisfaction: "AI cold emails are worse than human ones" — backlash growing
+- No player doing "deep research per prospect" as core value prop
+- Signal strength: **Strong** (market pain + timing of AI-personalization backlash)
+
+**Customer Discovery Engine** conducts 12 structured interviews (B2B founders, SDRs, sales leaders):
+- 11/12 confirm pain (severity: 4.5/5)
+- Core complaint: "I know personalization works, but researching each prospect takes 20-30 minutes. I can't do that at scale."
+- Secondary pain: "AI tools write generic garbage. My prospects can smell it. Worse than writing nothing."
+- Willingness to pay: $200-500/month (anchored against SDR salary + existing tools)
+- Buyer: Founder doing own outbound, or Head of Sales at 5-20 person sales team
+
+**Venture Thesis Engine** formalizes testable hypotheses:
+
+| # | Hypothesis | Validation Method | Success Threshold |
+|---|-----------|-------------------|-------------------|
+| 1 | Deep AI research produces messages prospects actually respond to | A/B test vs. template-based | >3x reply rate improvement |
+| 2 | Founders will pay $300+/mo for personalized outbound | Landing page + trial conversion | >6% trial-to-paid |
+| 3 | Research quality can be maintained at <$0.50/prospect cost | Cost tracking over 500 prospects | <$0.50 blended cost |
+| 4 | Reply rate advantage compounds as system learns ICP patterns | Cohort comparison (month 1 vs month 3) | >20% improvement |
+
+**Evidence Ladder** progression:
+
+| Rung | Evidence Type | Result | Week |
+|------|--------------|--------|------|
+| 1 | Problem exists (interviews) | 11/12 confirm pain | Week 1 |
+| 2 | Solution resonates (concept test) | 10/12 say "I'd switch immediately" | Week 1 |
+| 3 | People sign up (landing page) | 8.1% conversion rate | Week 2 |
+| 4 | People use it (pilot) | 22/30 pilot users send first campaign | Week 4 |
+| 5 | People pay (conversion) | 15/22 convert at $299/mo | Week 5 |
+
+---
+
+### Stage 2: "What should the product look like?" (Week 2)
+
+**Offer Design Engine** produces:
+- **ICP**: B2B founders doing own outbound, or sales teams (3-15 reps) selling $5K+ ACV deals where personalization matters
+- **Positioning**: "Deep research. Genuine connection. Every prospect gets the outreach they'd write themselves — if they had 30 minutes per person."
+- **Pricing**: $299/month Starter (200 prospects), $499/month Growth (500 prospects + experiments), $799/month Scale (2000 prospects + KG + warm intros)
+- **Anti-positioning**: NOT another "AI writes your cold email" tool. This is research-first, message-second.
+
+**Workflow Blueprint Engine** maps the core flow:
+
+```
+Define ICP → Source Prospects → Deep Research (per prospect) →
+Find Connection Point → Generate Message Variants →
+Thompson Sampling Allocation → Execute Multi-Step Sequence →
+Detect & Classify Replies → Surface Opportunities → Learn & Improve
+```
+
+**Product Experience Engine** defines interaction architecture:
+
+| Function | AI Pattern | Human Role |
+|----------|-----------|------------|
+| ICP definition | Co-creation (AI suggests, human refines) | Founder defines who to reach |
+| Prospect research | Autonomous (deep research pipeline) | None unless flagged |
+| Message generation | Variants + explanation (AI writes 3 options) | Founder approves or edits |
+| Sequence execution | Autonomous (Temporal workflow) | None until reply |
+| Reply handling | Draft + recommendation | Founder sends or edits |
+| Experiment results | Dashboard (AI shows what's winning) | Founder promotes winner |
+
+---
+
+### Stage 3: "Build the agent network" (Week 3-4)
+
+**Agent Factory** creates 8 specialist agents:
+
+| Agent | Input | Output | Coordination |
+|-------|-------|--------|-------------|
+| **ICP Analyzer** | Founder's description of ideal customer | Structured ICP (title, company stage, signals, industry, geo) | Feeds Prospect Sourcer |
+| **Prospect Sourcer** | ICP criteria | Raw prospect list (100-2000 per campaign) | Feeds Research Pipeline |
+| **Source Collector** | Prospect identity | Raw data (LinkedIn posts, blogs, news, talks, GitHub, job posts) | Feeds Profile Synthesizer |
+| **Profile Synthesizer** | Raw source data | Structured prospect profile (themes, style, priorities, pain signals) | Feeds Connection Finder |
+| **Connection Finder** | Prospect profile + your venture's value prop | Specific hook, timing signal, credibility angle | Feeds Message Crafter |
+| **Message Crafter** | Connection point + prospect style | 3 message variants (different angles/tones) | Feeds Sequence Orchestrator |
+| **Sequence Orchestrator** | Approved messages + schedule | Multi-step outreach execution (email → LinkedIn → follow-up) | Manages timing, detects replies |
+| **Reply Classifier** | Incoming reply text | Classification (interested / objection / not now / unsubscribe) + suggested response | Alerts founder |
+
+**The Critical Complexity Pipeline (Research)**:
+
+This is where ProspectForge is NOT "just a prompt." The research pipeline is a deep multi-agent system with per-step evaluation:
+
+```
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│  Source      │────▶│  Profile     │────▶│  Connection  │
+│  Collector   │     │  Synthesizer │     │  Finder      │
+└──────────────┘     └──────────────┘     └──────────────┘
+       │                    │                     │
+       ▼                    ▼                     ▼
+  • LinkedIn posts     • Key themes          • Why would they
+    (last 3 months)    • Communication          care about MY
+  • Blog articles        style                  product?
+  • Podcast            • Current             • What timing
+    appearances          priorities             signal exists?
+  • Company news       • Pain signals        • What's the
+  • Job postings       • Tech decisions        natural hook?
+  • GitHub activity
+  • Conference talks
+
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│  Eval:       │     │  Eval:       │     │  Eval:       │
+│  Factual?    │     │  Coherent?   │     │  Non-generic? │
+│  Sourced?    │     │  Insightful? │     │  Credible?   │
+│  Fresh?      │     │  Specific?   │     │  Worth their │
+└──────────────┘     └──────────────┘     │  time?       │
+                                          └──────────────┘
+```
+
+Each eval gate can reject and re-route. If Source Collector returns stale data (>3 months old, no recent activity), the system flags the prospect as "insufficient signal — skip or use lightweight approach."
+
+**Example research output for one prospect:**
+
+```
+Prospect: Sarah Chen, VP Engineering @ DataLayer (Series B, $28M raised)
+
+Research:
+  - Published "Scaling Engineering Teams Without Losing Culture" on LinkedIn (2 weeks ago, 340 likes)
+  - Hiring: 4 senior backend engineers, 2 ML engineers (active job posts)
+  - Company launched real-time analytics product in March
+  - Spoke at LeadDev NYC about "hiring for potential vs experience"
+  - Tech stack: Python, Kubernetes, Snowflake, dbt
+
+Synthesis:
+  - Communication style: Thoughtful, values-driven, shares specific frameworks
+  - Current priority: Scaling team 2x while maintaining quality bar
+  - Pain signals: Multiple posts about interview pipeline bottlenecks, "200 applicants per role"
+
+Connection Point:
+  - Hook: Her LinkedIn post about screening 200 applicants/role — she mentioned wishing for "signal through the noise"
+  - Relevance: MatchHire's AI screening directly solves this — save 40+ hours/week
+  - Timing: Active pain (hiring NOW), spoke about it publicly (2 weeks ago)
+  - Credibility angle: Reference her LeadDev talk framework — shows you actually read her work
+
+Quality Scores:
+  - Factual accuracy: 0.95
+  - Specificity: 0.91
+  - Connection strength: 0.88
+  - Timing relevance: 0.93
+```
+
+**Prompt Studio** creates versioned prompts:
+- `research-source-v1`: Source collection with recency bias and relevance filtering
+- `research-synthesis-v1`: Profile synthesis with mandatory specificity (no generic claims)
+- `connection-finder-v1`: Hook identification with anti-generic constraint ("if this message could be sent to anyone in the same role, it fails")
+- `message-craft-v1`: Message generation with word limit (< 80 words), natural tone, single clear CTA
+- `reply-classifier-v1`: Reply intent classification with suggested next action
+
+**Human Review Engine** configures:
+- Auto-send if connection_strength > 0.85 AND factual_accuracy > 0.90
+- Human review queue for connection_strength 0.6-0.85 (decent but not stellar hooks)
+- Auto-skip if connection_strength < 0.6 (insufficient signal to personalize meaningfully)
+- All variant B/C messages auto-approved if variant A was approved for same prospect
+
+---
+
+### Stage 4: "Execute outreach" (Week 4-5)
+
+**Temporal Workflow** orchestrates each prospect's sequence:
+
+```python
+# Simplified workflow structure (actual implementation in Activities)
+
+@workflow.defn
+class OutreachSequenceWorkflow:
+    """Per-prospect outreach sequence with multi-day sleeps and reply detection."""
+
+    @workflow.run
+    async def run(self, prospect: Prospect, campaign: Campaign):
+        # Day 0: Send primary email
+        result = await workflow.execute_activity(
+            send_email, args=[prospect, campaign.assigned_variant],
+            start_to_close_timeout=timedelta(minutes=5)
+        )
+
+        # Wait 3 days, checking for replies
+        reply = await workflow.wait_condition_or_timeout(
+            self.reply_received, timeout=timedelta(days=3)
+        )
+        if reply:
+            return await self.handle_reply(reply)
+
+        # Day 3: LinkedIn connection (if no reply)
+        await workflow.execute_activity(
+            send_linkedin_request, args=[prospect, campaign.linkedin_note]
+        )
+
+        # Wait 4 more days
+        reply = await workflow.wait_condition_or_timeout(
+            self.reply_received, timeout=timedelta(days=4)
+        )
+        if reply:
+            return await self.handle_reply(reply)
+
+        # Day 7: Follow-up email (shorter, new angle)
+        await workflow.execute_activity(
+            send_followup, args=[prospect, campaign.followup_variant]
+        )
+
+        # ... continues through Day 12 break-up email, Day 19 nurture
+```
+
+**Thompson Sampling** manages message experiments:
+
+```
+Campaign: "MatchHire outreach to VP Engineering"
+Variants:
+  A — Problem-first: "Your post about screening 200 applicants resonated..."
+  B — Social-proof-first: "How Acme reduced screening time by 60%..."
+  C — Curiosity-first: "Quick question. If you could screen 200 to a shortlist of 15 in 2 hours..."
+
+Allocation (evolves over time):
+  Prospects 1-30:   A=10, B=10, C=10 (even exploration)
+  Prospects 31-60:  A=8, B=10, C=12 (C showing early signal)
+  Prospects 61-100: A=6, B=8, C=16 (C pulling ahead)
+  Prospects 100+:   A=5, B=5, C=20 (C wins, exploitation mode)
+
+Final results:
+  A: 11% reply rate
+  B: 12% reply rate
+  C: 19% reply rate  ← Winner (curiosity-first questions > statements for VP-level)
+```
+
+**The founder's daily experience during active campaign:**
+
+```
+Slack (morning summary):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ProspectForge Daily Digest
+
+Campaign: "MatchHire → VP Engineering"
+  Yesterday: 8 emails sent, 3 opens, 1 reply
+  Total: 67/100 prospects reached, 9 replies, 6 meetings booked
+
+  New reply from Sarah Chen (DataLayer):
+  "This is interesting timing — we're literally drowning in
+   applications right now. Can you do Thursday 2pm PT?"
+
+  Suggested response:
+  "Thursday 2pm PT works perfectly. I'll send a calendar invite —
+   we'll look at how screening works for your Python/K8s roles."
+
+  [Send as-is] [Edit] [Handle manually]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+Founder's time spent: ~15 minutes/day reviewing replies and approving responses.
+
+---
+
+### Stage 5: "Learn and compound" (Week 6+)
+
+**Campaign Results (after 100 prospects):**
+
+```
+Prospects reached:     100
+Opened email:          68 (68%)
+Replied:               14 (14% — industry avg is 2-3%)
+  Interested:          9
+  Objection:           3
+  Not now:             2
+Meetings booked:       6
+Closed deals:          2 ($598/mo MRR from MatchHire sales)
+
+Cost breakdown:
+  Research (LLM calls): $38.40 ($0.384/prospect avg)
+  Message generation:   $4.20
+  Sending infrastructure: $12
+  Total:                $54.60 ($0.546/prospect)
+  Cost per meeting:     $9.10
+  Cost per deal:        $27.30
+```
+
+**Key learnings extracted and stored in Pattern Library:**
+- "Questions outperform statements in subject lines for VP-level prospects"
+- "Referencing prospect's OWN PUBLIC content (not just company info) → 2x response rate"
+- "Tuesday 7-9am send time → 40% higher open rate vs. afternoon for engineering leaders"
+- "Messages under 80 words outperform longer messages for this ICP"
+- "LinkedIn connection + email same week → 35% higher total response vs. email-only"
+
+**Cost Optimization (over time):**
+- Week 1: All research through GPT-4o → $0.52/prospect
+- Week 4: Source collection via GPT-4o-mini, synthesis via GPT-4o → $0.38/prospect
+- Week 8: Cached company data (reuse across prospects at same company) → $0.22/prospect
+- Week 12: Smart routing (simple ICPs via mini, complex via 4o) → $0.15/prospect
+
+**Knowledge Graph builds relationship intelligence:**
+
+```
+Over 3 campaigns, ProspectForge maps:
+
+  [You] ──sells──▶ [MatchHire]
+    │                   │
+    │            customer_of ▼
+    │            [DataLayer] ──employs──▶ [Sarah Chen]
+    │                 │                       │
+    │           competitor_of          spoke_at ▼
+    │                 ▼                  [LeadDev NYC]
+    │            [RivalCo]                    │
+    │                                   also_spoke ▼
+    └──could_sell──▶ [IntelliBase]      [Marcus Lee, CTO @ Acme]
+                          │                   │
+                    could_use ▼          warm_intro_possible
+                      [RivalCo]───────────────┘
+
+System suggestion:
+  "Marcus Lee (Acme, IntelliBase customer) and Sarah Chen both spoke at LeadDev NYC.
+   Marcus could warm-intro you to other DataLayer leaders for IntelliBase.
+   Want me to draft an intro request to Marcus?"
+```
+
+---
+
+### Stage 6: "Flywheel spins" (Week 8+)
+
+**Cross-venture compounding:**
+
+```
+ProspectForge → sells MatchHire → MatchHire revenue grows
+ProspectForge → sells IntelliBase → IntelliBase revenue grows
+MatchHire customer data → improves screening models → better MatchHire product
+IntelliBase usage data → improves RAG quality → reference for ProspectForge research
+ProspectForge learnings → improve its own research → higher reply rates → more customers
+All venture data → Pattern Library grows → next venture launches faster
+```
+
+**Metrics after 3 months:**
+
+| Metric | Month 1 | Month 2 | Month 3 |
+|--------|---------|---------|---------|
+| Reply rate | 14% | 16% | 19% |
+| Cost per prospect | $0.52 | $0.30 | $0.15 |
+| Meetings per 100 prospects | 6 | 8 | 11 |
+| Patterns in library | 5 | 12 | 20 |
+| ICP refinement accuracy | 70% | 82% | 91% |
+| Time founder spends daily | 45 min | 20 min | 10 min |
+
+**The self-reinforcing loop:**
+1. Better research → higher reply rates → more conversation data
+2. More conversation data → better understanding of what resonates → better messages
+3. Better messages → more meetings → more deals → more revenue
+4. More revenue → fund more campaigns → more prospects → more data
+5. More data → KG grows → warm intro paths emerge → even higher conversion
+6. Patterns transfer to next venture's outreach → instant head start
+
+---
+
+### Revenue Model
+
+```
+Tier      | Price    | Prospects/mo | Features
+──────────────────────────────────────────────────────────────────────
+Starter   | $299/mo  | 200          | Deep research, 4-step sequence, basic experiments
+Growth    | $499/mo  | 500          | + Thompson Sampling, reply coaching, multi-campaign
+Scale     | $799/mo  | 2000         | + KG warm intros, API access, team seats, white-label
+```
+
+**Unit economics at scale:**
+- Cost per prospect (blended): $0.15-0.30
+- Revenue per prospect (at $499/500): $1.00
+- Gross margin: 70-85%
+- Payback: Customer books 1 deal from first campaign → ROI positive immediately
+
+---
+
 ## Other Venture Examples
 
 ### Sales Lead Conversion
