@@ -1,5 +1,5 @@
-"""Multi-channel interaction — Slack, CLI, WebSocket."""
+"""Multi-channel interaction — Slack, CLI, Web."""
 
-from .slack import SlackBot
+from .slack import create_slack_app, run_slack_bot
 
-__all__ = ["SlackBot"]
+__all__ = ["create_slack_app", "run_slack_bot"]

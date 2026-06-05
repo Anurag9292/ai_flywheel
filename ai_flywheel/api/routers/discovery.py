@@ -6,6 +6,8 @@ from ai_flywheel.modules.product_intelligence.customer_discovery.schemas import 
     DiscoveryProjectResponse,
     InterviewGuideRequest,
     InterviewGuideResponse,
+    SynthesisRequest,
+    SynthesisResponse,
     TranscriptAnalysisRequest,
     TranscriptAnalysisResponse,
 )
@@ -35,3 +37,8 @@ async def generate_guide(venture_id: str, request: InterviewGuideRequest):
 @router.post("/analyze-transcript", response_model=TranscriptAnalysisResponse)
 async def analyze_transcript(venture_id: str, request: TranscriptAnalysisRequest):
     return await engine.analyze_transcript(venture_id, request)
+
+
+@router.post("/synthesize", response_model=SynthesisResponse)
+async def synthesize(venture_id: str, request: SynthesisRequest):
+    return await engine.synthesize(venture_id, request)

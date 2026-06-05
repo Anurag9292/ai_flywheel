@@ -45,6 +45,17 @@ class Settings(BaseSettings):
     s3_secret_key: str = "minioadmin"
     s3_bucket: str = "ai-flywheel"
 
+    # Auth (JWT)
+    jwt_secret_key: str = "dev-secret-key-change-in-production-abc123xyz"
+    jwt_algorithm: str = "HS256"
+    jwt_expiration_hours: int = 24
+
+    # Slack Integration
+    slack_bot_token: str = ""
+    slack_signing_secret: str = ""
+    slack_app_token: str = ""
+    slack_channel: str = ""  # Default channel for notifications
+
     # RunCord (Builder Engine)
     runcord_api_key: str = ""
     runcord_base_url: str = "https://api.runcord.com/api/v1"

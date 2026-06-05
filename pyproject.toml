@@ -21,6 +21,7 @@ dependencies = [
     "opentelemetry-sdk>=1.25",
     "opentelemetry-instrumentation-fastapi>=0.46b0",
     "python-jose[cryptography]>=3.3",
+    "slack-bolt>=1.18",
 ]
 
 [project.optional-dependencies]
