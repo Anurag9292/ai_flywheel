@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
+import { PageHeader, Card, Button, Modal, VentureSelector, Spinner, EmptyState, Badge, Input, Textarea } from "@/components/ui";
 
 interface Offer {
   id: string;
@@ -18,7 +19,6 @@ interface Offer {
 }
 
 export default function OffersPage() {
-  const [ventures, setVentures] = useState<any[]>([]);
   const [selectedVenture, setSelectedVenture] = useState("");
   const [offers, setOffers] = useState<Offer[]>([]);
   const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
@@ -35,10 +35,6 @@ export default function OffersPage() {
 
   // Landing copy result
   const [landingCopy, setLandingCopy] = useState<any>(null);
-
-  useEffect(() => {
-    api.ventures.list().then(setVentures).catch(() => {});
-  }, []);
 
   useEffect(() => {
     if (selectedVenture) {
@@ -137,66 +133,47 @@ export default function OffersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Offer Design Engine</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            ICP, positioning, pricing, and conversion copy. Design offers that resonate.
-          </p>
-        </div>
-        <div className="flex gap-3">
-          <select
-            value={selectedVenture}
-            onChange={(e) => { setSelectedVenture(e.target.value); setSelectedOffer(null); }}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm"
-          >
-            <option value="">Select venture...</option>
-            {ventures.map((v) => (
-              <option key={v.id} value={v.id}>{v.name}</option>
-            ))}
-          </select>
-          {selectedVenture && (
-            <button
-              onClick={() => setShowCreate(true)}
-              className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700"
-            >
-              + New Offer
-            </button>
-          )}
-        </div>
-      </div>
+      <PageHeader
+        title="Offer Design Engine"
+        subtitle="ICP, positioning, pricing, and conversion copy. Design offers that resonate."
+        actions={
+          <div className="flex gap-3 items-center">
+            <VentureSelector value={selectedVenture} onChange={(id) => { setSelectedVenture(id); setSelectedOffer(null); }} />
+            {selectedVenture && (
+              <Button onClick={() => setShowCreate(true)}>+ New Offer</Button>
+            )}
+          </div>
+        }
+      />
 
       <div className="grid grid-cols-3 gap-6">
         {/* Offer list */}
         <div className="col-span-1 space-y-3">
           {loading ? (
-            <p className="text-sm text-gray-500">Loading...</p>
+            <Spinner text="Loading..." />
           ) : offers.length === 0 && selectedVenture ? (
-            <div className="bg-white rounded-lg border border-dashed border-gray-300 p-6 text-center">
-              <p className="text-gray-500 text-sm">No offers yet.</p>
-            </div>
+            <EmptyState message="No offers yet." />
           ) : (
             offers.map((offer) => (
-              <div
+              <Card
                 key={offer.id}
+                active={selectedOffer?.id === offer.id}
                 onClick={() => setSelectedOffer(offer)}
-                className={`bg-white rounded-lg border p-4 cursor-pointer transition-all ${
-                  selectedOffer?.id === offer.id ? "border-indigo-500 ring-2 ring-indigo-200" : "border-gray-200 hover:border-gray-300"
-                }`}
+                padding="sm"
               >
-                <h3 className="font-medium text-gray-900 text-sm">{offer.name}</h3>
+                <h3 className="font-medium text-[var(--text-primary)] text-sm">{offer.name}</h3>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  <span className={`text-xs px-2 py-0.5 rounded ${offer.icp ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                  <Badge variant={offer.icp ? "green" : "purple"}>
                     ICP {offer.icp ? "+" : "-"}
-                  </span>
-                  <span className={`text-xs px-2 py-0.5 rounded ${offer.positioning ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                  </Badge>
+                  <Badge variant={offer.positioning ? "green" : "purple"}>
                     Position {offer.positioning ? "+" : "-"}
-                  </span>
-                  <span className={`text-xs px-2 py-0.5 rounded ${offer.pricing ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                  </Badge>
+                  <Badge variant={offer.pricing ? "green" : "purple"}>
                     Pricing {offer.pricing ? "+" : "-"}
-                  </span>
+                  </Badge>
                 </div>
-              </div>
+              </Card>
             ))
           )}
         </div>
@@ -206,124 +183,104 @@ export default function OffersPage() {
           {selectedOffer ? (
             <div className="space-y-4">
               {/* Action buttons */}
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
-                <h2 className="text-lg font-bold text-gray-900 mb-3">{selectedOffer.name}</h2>
+              <Card>
+                <h2 className="text-lg font-bold text-[var(--text-primary)] mb-3">{selectedOffer.name}</h2>
                 <div className="flex flex-wrap gap-2">
-                  <button onClick={handleGenerateICP} disabled={!!generating} className="bg-indigo-600 text-white px-3 py-1.5 rounded text-sm hover:bg-indigo-700 disabled:opacity-50">
+                  <Button size="sm" onClick={handleGenerateICP} disabled={!!generating}>
                     {generating === "icp" ? "Generating..." : "Generate ICP"}
-                  </button>
-                  <button onClick={handleGeneratePositioning} disabled={!!generating} className="bg-indigo-600 text-white px-3 py-1.5 rounded text-sm hover:bg-indigo-700 disabled:opacity-50">
+                  </Button>
+                  <Button size="sm" onClick={handleGeneratePositioning} disabled={!!generating}>
                     {generating === "positioning" ? "Generating..." : "Generate Positioning"}
-                  </button>
-                  <button onClick={handleGeneratePricing} disabled={!!generating} className="bg-indigo-600 text-white px-3 py-1.5 rounded text-sm hover:bg-indigo-700 disabled:opacity-50">
+                  </Button>
+                  <Button size="sm" onClick={handleGeneratePricing} disabled={!!generating}>
                     {generating === "pricing" ? "Generating..." : "Generate Pricing"}
-                  </button>
-                  <button onClick={handleGenerateLandingCopy} disabled={!!generating} className="bg-purple-600 text-white px-3 py-1.5 rounded text-sm hover:bg-purple-700 disabled:opacity-50">
+                  </Button>
+                  <Button size="sm" onClick={handleGenerateLandingCopy} disabled={!!generating} className="!from-purple-600 !to-violet-700">
                     {generating === "copy" ? "Generating..." : "Generate Landing Copy"}
-                  </button>
+                  </Button>
                 </div>
-              </div>
+              </Card>
 
               {/* ICP Section */}
               {selectedOffer.icp && (
-                <div className="bg-white rounded-lg border border-gray-200 p-4">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-2">Ideal Customer Profile</h3>
-                  <pre className="text-xs text-gray-600 whitespace-pre-wrap bg-gray-50 p-3 rounded">
+                <Card>
+                  <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-2">Ideal Customer Profile</h3>
+                  <pre className="text-xs text-[var(--text-muted)] whitespace-pre-wrap code-block p-3 rounded">
                     {JSON.stringify(selectedOffer.icp, null, 2)}
                   </pre>
-                </div>
+                </Card>
               )}
 
               {/* Positioning */}
               {selectedOffer.positioning && (
-                <div className="bg-white rounded-lg border border-gray-200 p-4">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-2">Positioning Strategy</h3>
-                  <pre className="text-xs text-gray-600 whitespace-pre-wrap bg-gray-50 p-3 rounded">
+                <Card>
+                  <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-2">Positioning Strategy</h3>
+                  <pre className="text-xs text-[var(--text-muted)] whitespace-pre-wrap code-block p-3 rounded">
                     {JSON.stringify(selectedOffer.positioning, null, 2)}
                   </pre>
-                </div>
+                </Card>
               )}
 
               {/* Pricing */}
               {selectedOffer.pricing && (
-                <div className="bg-white rounded-lg border border-gray-200 p-4">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-2">Pricing Strategy</h3>
-                  <pre className="text-xs text-gray-600 whitespace-pre-wrap bg-gray-50 p-3 rounded">
+                <Card>
+                  <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-2">Pricing Strategy</h3>
+                  <pre className="text-xs text-[var(--text-muted)] whitespace-pre-wrap code-block p-3 rounded">
                     {JSON.stringify(selectedOffer.pricing, null, 2)}
                   </pre>
-                </div>
+                </Card>
               )}
 
               {/* Landing Copy */}
               {landingCopy && (
-                <div className="bg-white rounded-lg border border-purple-200 p-4">
-                  <h3 className="text-sm font-semibold text-purple-700 mb-3">Landing Page Copy</h3>
+                <Card className="border-[var(--accent-purple)]/30">
+                  <h3 className="text-sm font-semibold text-[var(--accent-purple)] mb-3">Landing Page Copy</h3>
                   <div className="space-y-4">
-                    <div className="text-center py-6 bg-gradient-to-b from-purple-50 to-white rounded-lg">
-                      <h1 className="text-2xl font-bold text-gray-900">{landingCopy.headline}</h1>
-                      <p className="text-lg text-gray-600 mt-2">{landingCopy.subheadline}</p>
-                      <p className="text-sm text-gray-500 mt-3 max-w-md mx-auto">{landingCopy.hero_body}</p>
+                    <div className="text-center py-6 bg-gradient-to-b from-[var(--accent-purple)]/10 to-transparent rounded-lg">
+                      <h1 className="text-2xl font-bold text-[var(--text-primary)]">{landingCopy.headline}</h1>
+                      <p className="text-lg text-[var(--text-secondary)] mt-2">{landingCopy.subheadline}</p>
+                      <p className="text-sm text-[var(--text-muted)] mt-3 max-w-md mx-auto">{landingCopy.hero_body}</p>
                       <div className="mt-4 flex justify-center gap-3">
-                        <span className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm">{landingCopy.cta_primary}</span>
-                        <span className="border border-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm">{landingCopy.cta_secondary}</span>
+                        <span className="btn-glow !text-sm">{landingCopy.cta_primary}</span>
+                        <span className="btn-ghost !text-sm">{landingCopy.cta_secondary}</span>
                       </div>
                     </div>
                     {landingCopy.benefits?.length > 0 && (
                       <div>
-                        <h4 className="text-xs font-medium text-gray-500 mb-2">Benefits</h4>
+                        <h4 className="text-xs font-medium text-[var(--text-muted)] mb-2">Benefits</h4>
                         <ul className="grid grid-cols-2 gap-2">
                           {landingCopy.benefits.map((b: string, i: number) => (
-                            <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
-                              <span className="text-green-500">+</span> {b}
+                            <li key={i} className="text-sm text-[var(--text-secondary)] flex items-start gap-2">
+                              <span className="text-green-400">+</span> {b}
                             </li>
                           ))}
                         </ul>
                       </div>
                     )}
                   </div>
-                </div>
+                </Card>
               )}
             </div>
           ) : (
-            <div className="bg-white rounded-lg border border-dashed border-gray-300 p-12 text-center">
-              <p className="text-gray-500">Select an offer to view and generate components</p>
-            </div>
+            <EmptyState message="Select an offer to view and generate components" />
           )}
         </div>
       </div>
 
       {/* Create Modal */}
-      {showCreate && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-xl space-y-4">
-            <h2 className="text-lg font-bold text-gray-900">New Offer</h2>
-            <div>
-              <label className="text-sm font-medium text-gray-700">Name</label>
-              <input value={formName} onChange={(e) => setFormName(e.target.value)} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" placeholder="e.g., AI Sales Coach Pro" />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">Domain</label>
-              <input value={formDomain} onChange={(e) => setFormDomain(e.target.value)} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" placeholder="e.g., B2B sales automation" />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">Target Audience</label>
-              <input value={formAudience} onChange={(e) => setFormAudience(e.target.value)} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" placeholder="e.g., B2B SDRs at companies with 50-500 employees" />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">Problem Statement</label>
-              <textarea value={formProblem} onChange={(e) => setFormProblem(e.target.value)} rows={2} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" placeholder="What pain are you solving?" />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">Solution Description</label>
-              <textarea value={formSolution} onChange={(e) => setFormSolution(e.target.value)} rows={2} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" placeholder="How does your product solve it?" />
-            </div>
-            <div className="flex justify-end gap-3 pt-2">
-              <button onClick={() => setShowCreate(false)} className="px-4 py-2 text-sm text-gray-700">Cancel</button>
-              <button onClick={handleCreate} className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700">Create Offer</button>
-            </div>
+      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="New Offer">
+        <div className="space-y-4">
+          <Input label="Name" value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="e.g., AI Sales Coach Pro" />
+          <Input label="Domain" value={formDomain} onChange={(e) => setFormDomain(e.target.value)} placeholder="e.g., B2B sales automation" />
+          <Input label="Target Audience" value={formAudience} onChange={(e) => setFormAudience(e.target.value)} placeholder="e.g., B2B SDRs at companies with 50-500 employees" />
+          <Textarea label="Problem Statement" value={formProblem} onChange={(e) => setFormProblem(e.target.value)} rows={2} placeholder="What pain are you solving?" />
+          <Textarea label="Solution Description" value={formSolution} onChange={(e) => setFormSolution(e.target.value)} rows={2} placeholder="How does your product solve it?" />
+          <div className="flex justify-end gap-3 pt-2">
+            <Button variant="ghost" onClick={() => setShowCreate(false)}>Cancel</Button>
+            <Button onClick={handleCreate}>Create Offer</Button>
           </div>
         </div>
-      )}
+      </Modal>
     </div>
   );
 }
