@@ -7,7 +7,7 @@ Traces are written asynchronously to avoid blocking operations.
 from __future__ import annotations
 
 import functools
-import time
+import uuid
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
@@ -15,7 +15,6 @@ from datetime import UTC, datetime
 from typing import Any, ParamSpec, TypeVar
 
 import structlog
-import uuid
 
 logger = structlog.get_logger()
 
