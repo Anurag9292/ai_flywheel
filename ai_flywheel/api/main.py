@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from ai_flywheel import __version__
 from ai_flywheel.api.routers import (
     agents,
+    auth,
     blueprints,
     costs,
     deployments,
@@ -70,8 +71,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from ai_flywheel.api.middleware.venture_context import VentureContextMiddleware
+app.add_middleware(VentureContextMiddleware)
+
 # Register routers
 app.include_router(health.router, tags=["health"])
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(ventures.router, prefix="/api/ventures", tags=["ventures"])
 app.include_router(workflows.router, prefix="/api/workflows", tags=["workflows"])
 app.include_router(agents.router, prefix="/api/agents", tags=["agents"])
