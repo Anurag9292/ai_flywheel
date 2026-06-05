@@ -1,6 +1,6 @@
 """Unit tests for PromptStudio service."""
 
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,8 +13,6 @@ from ai_flywheel.modules.agent_runtime.prompt_studio.schemas import (
 from ai_flywheel.modules.agent_runtime.prompt_studio.service import (
     PromptStudio,
     RenderError,
-    TemplateNotFoundError,
-    VersionNotFoundError,
 )
 
 

@@ -1,8 +1,6 @@
 """Tests for core configuration."""
 
-import os
 
-import pytest
 
 
 def test_settings_loads_defaults():
