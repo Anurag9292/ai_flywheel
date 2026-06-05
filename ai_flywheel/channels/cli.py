@@ -9,8 +9,6 @@ import asyncio
 import json
 import sys
 
-from ai_flywheel.core.database import get_global_session, get_session
-from ai_flywheel.core.models import Venture
 from ai_flywheel.ventures.service import VentureService
 
 
@@ -188,27 +186,25 @@ async def _cmd_health():
 
 async def _cmd_venture(args):
     """Venture CRUD operations."""
-    from ai_flywheel.ventures.schemas import VentureCreate
-
     service = VentureService()
 
     if args.action == "create":
-        result = await service.create(VentureCreate(name=args.name, domain=args.domain))
+        result = await service.create_venture(name=args.name, domain=args.domain)
         _output({"id": result.id, "name": result.name, "domain": result.domain, "status": result.status})
 
     elif args.action == "list":
-        ventures = await service.list_all()
+        ventures = await service.list_ventures()
         _output([{"id": v.id, "name": v.name, "domain": v.domain, "status": v.status} for v in ventures])
 
     elif args.action == "get":
-        venture = await service.get(args.id)
-        if venture:
+        try:
+            venture = await service.get_venture(args.id)
             _output({"id": venture.id, "name": venture.name, "domain": venture.domain, "status": venture.status})
-        else:
-            _error(f"Venture {args.id} not found")
+        except ValueError as e:
+            _error(str(e))
 
     elif args.action == "archive":
-        await service.archive(args.id)
+        await service.archive_venture(args.id)
         _output({"message": f"Venture {args.id} archived"})
 
     else:
@@ -217,7 +213,6 @@ async def _cmd_venture(args):
 
 async def _cmd_agent(args):
     """Agent management operations."""
-    from ai_flywheel.modules.agent_runtime.agent_factory.schemas import AgentCreate
     from ai_flywheel.modules.agent_runtime.agent_factory.service import AgentFactory
 
     service = AgentFactory()
@@ -229,17 +224,17 @@ async def _cmd_agent(args):
     elif args.action == "create":
         result = await service.create_agent(
             args.venture_id,
-            AgentCreate(
-                name=args.name,
-                archetype=args.archetype,
-                model=args.model,
-                system_prompt=args.system_prompt,
-            ),
+            {
+                "name": args.name,
+                "archetype": args.archetype,
+                "model": args.model,
+                "system_prompt": args.system_prompt,
+            },
         )
         _output({"id": result.id, "name": result.name, "archetype": result.archetype})
 
     elif args.action == "execute":
-        result = await service.execute_agent(
+        result = await service.execute(
             args.venture_id,
             {"agent_id": args.agent_id, "task": args.task},
         )
@@ -298,27 +293,34 @@ async def _cmd_thesis(args):
 
 async def _cmd_discovery(args):
     """Customer discovery operations."""
+    from ai_flywheel.modules.product_intelligence.customer_discovery.schemas import TranscriptAnalysisRequest
     from ai_flywheel.modules.product_intelligence.customer_discovery.service import CustomerDiscoveryEngine
 
     service = CustomerDiscoveryEngine()
 
     if args.action == "list":
         projects = await service.list_projects(args.venture_id)
-        _output([{"id": p.id, "name": p.name, "confidence": p.confidence} for p in projects])
+        _output([{"id": p.id, "name": p.name, "confidence_score": p.confidence_score} for p in projects])
 
     elif args.action == "analyze":
         # Read transcript from file or use as text
         import os
-        transcript = args.transcript
-        if os.path.isfile(transcript):
-            with open(transcript) as f:
-                transcript = f.read()
+        text = args.transcript
+        if os.path.isfile(text):
+            with open(text) as f:
+                text = f.read()
 
-        result = await service.analyze_transcript(
-            args.venture_id,
-            {"project_id": args.project_id, "transcript": transcript},
+        request = TranscriptAnalysisRequest(
+            project_id=args.project_id,
+            interviewee_role="customer",
+            transcript=text,
         )
-        _output(result)
+        result = await service.analyze_transcript(args.venture_id, request)
+        _output({
+            "interview_id": result.interview_id,
+            "sentiment": result.sentiment,
+            "insights": [{"category": i.category, "finding": i.finding} for i in result.insights],
+        })
 
     else:
         print("Usage: ai-flywheel discovery {list|analyze}", file=sys.stderr)
@@ -326,18 +328,23 @@ async def _cmd_discovery(args):
 
 async def _cmd_cost(args):
     """Cost tracking operations."""
+    from ai_flywheel.modules.experimentation.cost_optimizer.schemas import BudgetCreate
     from ai_flywheel.modules.experimentation.cost_optimizer.service import CostOptimizer
 
     service = CostOptimizer()
 
     if args.action == "report":
-        report = await service.get_spend_report(args.venture_id)
+        report = await service.get_report(args.venture_id)
         _output(report)
 
     elif args.action == "set-budget":
         result = await service.set_budget(
-            args.venture_id,
-            {"monthly_limit": args.amount, "alert_threshold": 0.8},
+            BudgetCreate(
+                venture_id=args.venture_id,
+                period_type="monthly",
+                limit_usd=args.amount,
+                alert_threshold_pct=0.8,
+            )
         )
         _output(result)
 
