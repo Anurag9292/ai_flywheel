@@ -31,6 +31,16 @@ from ai_flywheel.modules.agent_runtime.agent_factory.execution import (
     execute_agent_activity,
 )
 
+# Phase 2: Venture Lifecycle Orchestration
+from ai_flywheel.workflows.venture_lifecycle import (
+    VentureLifecycleWorkflow,
+    thesis_stage_activity,
+    discovery_stage_activity,
+    market_stage_activity,
+    offer_stage_activity,
+    kill_check_activity,
+)
+
 logger = structlog.get_logger()
 
 # All workflows the worker can execute
@@ -40,6 +50,7 @@ ALL_WORKFLOWS = [
     ChainAgentWorkflow,
     ParallelAgentWorkflow,
     ApprovalAgentWorkflow,
+    VentureLifecycleWorkflow,
 ]
 
 # All activities the worker can execute
@@ -47,6 +58,11 @@ ALL_ACTIVITIES = [
     greet_activity,
     llm_activity,
     execute_agent_activity,
+    thesis_stage_activity,
+    discovery_stage_activity,
+    market_stage_activity,
+    offer_stage_activity,
+    kill_check_activity,
 ]
 
 
