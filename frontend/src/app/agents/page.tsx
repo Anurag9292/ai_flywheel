@@ -13,6 +13,7 @@ export default function AgentsPage() {
   const [showExecuteModal, setShowExecuteModal] = useState(false);
   const [executeAgentId, setExecuteAgentId] = useState("");
   const [taskInput, setTaskInput] = useState("");
+  const [requireApproval, setRequireApproval] = useState(false);
   const [executeResult, setExecuteResult] = useState<any>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -69,6 +70,7 @@ export default function AgentsPage() {
       const result = await api.agents.execute(selectedVenture, {
         agent_id: executeAgentId,
         task: taskInput,
+        require_approval: requireApproval,
       });
       setExecuteResult(result);
     } catch (e: any) {
@@ -249,6 +251,18 @@ export default function AgentsPage() {
                   placeholder="Describe the task for the agent..."
                   required
                 />
+              </div>
+              <div className="mb-4 flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="require-approval"
+                  checked={requireApproval}
+                  onChange={(e) => setRequireApproval(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <label htmlFor="require-approval" className="text-sm text-gray-700">
+                  Require human approval before returning result
+                </label>
               </div>
               {executeResult && (
                 <div className="mb-4 p-3 bg-gray-50 rounded-md text-sm">

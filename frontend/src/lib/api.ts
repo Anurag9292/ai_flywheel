@@ -42,4 +42,9 @@ export const api = {
     report: (ventureId: string) => apiFetch<any>(`/api/costs/report?venture_id=${ventureId}`),
     alerts: (ventureId: string) => apiFetch<any[]>(`/api/costs/alerts?venture_id=${ventureId}`),
   },
+  reviews: {
+    queue: (ventureId: string) => apiFetch<any>(`/api/reviews/queue?venture_id=${ventureId}`),
+    decide: (ventureId: string, data: { review_id: string; decision: string; notes?: string }) =>
+      apiFetch<any>(`/api/reviews/decide?venture_id=${ventureId}`, { method: "POST", body: JSON.stringify(data) }),
+  },
 };
