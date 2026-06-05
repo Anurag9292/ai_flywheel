@@ -17,6 +17,7 @@ from temporalio import activity, workflow
 
 with workflow.unsafe.imports_passed_through():
     import structlog
+
     from ai_flywheel.core.llm import generate
     from ai_flywheel.core.traces import get_tracer
 

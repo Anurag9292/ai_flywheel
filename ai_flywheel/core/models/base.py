@@ -9,9 +9,9 @@ All models inherit from Base and get:
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 
-import uuid
 from sqlalchemy import DateTime, String, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 

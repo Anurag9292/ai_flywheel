@@ -7,13 +7,13 @@ Production: Redis Streams for distributed pub/sub.
 from __future__ import annotations
 
 import asyncio
+import uuid
 from collections import defaultdict
 from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
 from typing import Any
 
 import structlog
-import uuid
 
 logger = structlog.get_logger()
 
