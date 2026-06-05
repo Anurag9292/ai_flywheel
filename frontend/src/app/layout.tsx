@@ -22,6 +22,7 @@ const navItems = [
   { href: "/", label: "Dashboard", icon: "⌂" },
   { href: "/ventures", label: "Ventures", icon: "◆" },
   { href: "/agents", label: "Agents", icon: "⚙" },
+  { href: "/reviews", label: "Reviews", icon: "✓" },
   { href: "/discovery", label: "Discovery", icon: "◎" },
   { href: "/experiments", label: "Experiments", icon: "⚗" },
   { href: "/costs", label: "Costs", icon: "$" },
