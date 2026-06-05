@@ -132,13 +132,13 @@ class BuildMVPWorkflow:
         )
         
         if not validation.passed:
-            # Retry with feedback
+            # Retry with feedback — routes to the SAME session (see session-threading.md)
             await workflow.execute_activity(
                 trigger_runcord_fix,
-                args=[pr_url, validation.feedback],
+                args=[session["id"], validation.feedback],
                 start_to_close_timeout=timedelta(minutes=5),
             )
-            # Wait again...
+            # Wait for agent to push fixes...
         
         # Step 6: Merge
         if spec.auto_merge and validation.passed:
@@ -440,20 +440,30 @@ RunCord handles the rest:
 
 ```python
 @activity.defn
-async def trigger_runcord_build(prompt: str, repo: str) -> dict:
-    """Trigger RunCord to execute a build. Returns session info."""
+async def trigger_runcord_build(prompt: str, repo: str, reference_id: str | None = None) -> dict:
+    """Trigger RunCord to execute a build. Returns session info including ID for threading.
+    
+    The returned dict includes 'id' (session_id) which MUST be stored in workflow state
+    for sending follow-up messages via trigger_runcord_fix.
+    See: docs/session-threading.md
+    """
     async with httpx.AsyncClient() as client:
+        payload = {
+            "repository": repo,
+            "message": prompt,
+        }
+        if reference_id:
+            payload["reference_id"] = reference_id
+        
         response = await client.post(
             f"{settings.runcord_base_url}/sessions",
             headers={"Authorization": f"Bearer {settings.runcord_api_key}"},
-            json={
-                "repository": repo,
-                "message": prompt,
-            },
+            json=payload,
             timeout=30.0,
         )
         response.raise_for_status()
         return response.json()
+        # Returns: {"id": "ses_...", "status": "active", "repository": "...", ...}
 ```
 
 ### Listing Available Repositories
@@ -491,27 +501,44 @@ curl -X POST https://api.runcord.com/api/v1/sessions \
   }'
 ```
 
+### Session Threading (Follow-Up Prompts)
+
+When a build fails validation, the Builder Engine sends fix requests **to the same session** — not a new one. This preserves the agent's context, file state, and conversation history.
+
+See **[Session Threading & Routing](./session-threading.md)** for the full API contract, including:
+- How `session_id` is stored and used for follow-ups
+- The `trigger_runcord_fix` activity implementation
+- Webhook-to-session correlation strategies
+- Error handling for expired sessions
+
 ### Monitoring Build Progress
 
 After triggering a session, the Temporal workflow:
-1. Receives the session response (contains session ID/status)
+1. Receives the session response (contains session ID for threading)
 2. Waits for GitHub webhook → PR opened (Temporal signal: `pr_opened`)
 3. Validates the PR (tests pass, acceptance criteria met)
-4. Auto-merges or requests human review
+4. If validation fails → sends fix to same session via `POST /sessions/{id}/messages`
+5. Repeats validation loop (up to 3 retries)
+6. Auto-merges or requests human review
 
 ```python
 # In the Temporal workflow, after triggering:
 session = await workflow.execute_activity(
     trigger_runcord_build,
-    args=[compiled_prompt, spec.repo],
+    args=[compiled_prompt, spec.repo, spec.build_id],  # build_id = reference_id
     start_to_close_timeout=timedelta(minutes=5),
 )
+self.session_id = session["id"]  # Store for follow-up messages!
 
 # Sleep until PR webhook signals us
 pr_event = await workflow.wait_condition(
     self.pr_opened,
     timeout=timedelta(hours=2),  # Escalate if no PR in 2 hours
 )
+
+# If validation fails later, send fix to same session:
+# await trigger_runcord_fix(self.session_id, feedback)
+# See: docs/session-threading.md for full retry loop
 ```
 
 ---
