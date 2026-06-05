@@ -16,6 +16,7 @@ from datetime import timedelta
 from typing import Any
 
 from temporalio import activity, workflow
+from temporalio.common import RetryPolicy
 
 with workflow.unsafe.imports_passed_through():
     import structlog
@@ -197,7 +198,7 @@ class SingleAgentWorkflow:
         timeout_seconds = agent_config.get("timeout_seconds", 120)
         retry_policy_config = agent_config.get("retry_policy", {})
 
-        retry_policy = workflow.RetryPolicy(
+        retry_policy = RetryPolicy(
             maximum_attempts=retry_policy_config.get("maximum_attempts", 3),
             backoff_coefficient=retry_policy_config.get("backoff_coefficient", 2.0),
         )
@@ -241,7 +242,7 @@ class ChainAgentWorkflow:
         timeout_seconds = agent_config.get("timeout_seconds", 120)
         retry_policy_config = agent_config.get("retry_policy", {})
 
-        retry_policy = workflow.RetryPolicy(
+        retry_policy = RetryPolicy(
             maximum_attempts=retry_policy_config.get("maximum_attempts", 3),
             backoff_coefficient=retry_policy_config.get("backoff_coefficient", 2.0),
         )
@@ -319,7 +320,7 @@ class ParallelAgentWorkflow:
         timeout_seconds = agent_config.get("timeout_seconds", 120)
         retry_policy_config = agent_config.get("retry_policy", {})
 
-        retry_policy = workflow.RetryPolicy(
+        retry_policy = RetryPolicy(
             maximum_attempts=retry_policy_config.get("maximum_attempts", 3),
             backoff_coefficient=retry_policy_config.get("backoff_coefficient", 2.0),
         )
@@ -412,7 +413,7 @@ class ApprovalAgentWorkflow:
         timeout_seconds = agent_config.get("timeout_seconds", 120)
         retry_policy_config = agent_config.get("retry_policy", {})
 
-        retry_policy = workflow.RetryPolicy(
+        retry_policy = RetryPolicy(
             maximum_attempts=retry_policy_config.get("maximum_attempts", 3),
             backoff_coefficient=retry_policy_config.get("backoff_coefficient", 2.0),
         )
