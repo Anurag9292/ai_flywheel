@@ -58,9 +58,11 @@ async def get_session(
     async with async_session_factory() as session:
         try:
             if venture_id:
+                # SET LOCAL doesn't support $1 params in asyncpg,
+                # so we use string formatting. Safe: venture_id is a UUID.
+                safe_vid = venture_id.replace("'", "''")
                 await session.execute(
-                    text("SET LOCAL app.current_venture_id = :vid"),
-                    {"vid": venture_id},
+                    text(f"SET LOCAL app.current_venture_id = '{safe_vid}'")
                 )
             else:
                 await session.execute(
