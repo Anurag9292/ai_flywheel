@@ -19,8 +19,8 @@ class Settings(BaseSettings):
     log_level: str = "DEBUG"
 
     # Database
-    database_url: str = "postgresql+asyncpg://flywheel:flywheel_dev@localhost:5432/ai_flywheel"
-    database_url_sync: str = "postgresql://flywheel:flywheel_dev@localhost:5432/ai_flywheel"
+    database_url: str = "postgresql+asyncpg://flywheel:flywheel_dev@localhost:5433/ai_flywheel"
+    database_url_sync: str = "postgresql://flywheel:flywheel_dev@localhost:5433/ai_flywheel"
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
