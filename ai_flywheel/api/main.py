@@ -8,7 +8,7 @@ import structlog
 from fastapi import FastAPI
 
 from ai_flywheel import __version__
-from ai_flywheel.api.routers import health, ventures, workflows
+from ai_flywheel.api.routers import agents, discovery, experiments, health, ventures, workflows
 from ai_flywheel.core.config import settings
 from ai_flywheel.core.database import close_db, init_db
 from ai_flywheel.core.tasks import close_temporal_client
@@ -38,3 +38,6 @@ app = FastAPI(
 app.include_router(health.router, tags=["health"])
 app.include_router(ventures.router, prefix="/api/ventures", tags=["ventures"])
 app.include_router(workflows.router, prefix="/api/workflows", tags=["workflows"])
+app.include_router(agents.router, prefix="/api/agents", tags=["agents"])
+app.include_router(discovery.router, prefix="/api/discovery", tags=["discovery"])
+app.include_router(experiments.router, prefix="/api/experiments", tags=["experiments"])
