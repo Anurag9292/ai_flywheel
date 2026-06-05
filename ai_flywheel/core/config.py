@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     s3_secret_key: str = "minioadmin"
     s3_bucket: str = "ai-flywheel"
 
+    # RunCord (Builder Engine)
+    runcord_api_key: str = ""
+    runcord_base_url: str = "https://api.runcord.com/api/v1"
+
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
