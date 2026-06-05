@@ -112,8 +112,8 @@ class EventBus:
 
         # Wildcard: "agent.*" matches "agent.completed"
         parts = event_type.split(".")
-        for i in range(len(parts)):
-            wildcard = ".".join(parts[:i]) + ".*" if i > 0 else "*"
+        for i in range(1, len(parts)):
+            wildcard = ".".join(parts[:i]) + ".*"
             handlers.extend(self._handlers.get(wildcard, []))
 
         # Global wildcard
