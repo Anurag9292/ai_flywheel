@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_flywheel.core.traces import Tracer, get_tracer, traced
+from ai_flywheel.core.traces import Tracer
 
 
 @pytest.fixture

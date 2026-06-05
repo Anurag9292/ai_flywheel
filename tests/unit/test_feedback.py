@@ -7,7 +7,6 @@ import pytest
 
 from ai_flywheel.modules.experimentation.feedback.schemas import (
     FeedbackCreate,
-    FeedbackQuery,
 )
 from ai_flywheel.modules.experimentation.feedback.service import FeedbackCollector
 

@@ -1,6 +1,6 @@
 """Unit tests for CostOptimizer service and listener."""
 
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

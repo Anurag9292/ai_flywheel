@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 
 from ai_flywheel.core.contracts.events import (
     AgentCompletedEvent,
-    LLMCallCompletedEvent,
     VentureCreatedEvent,
 )
 from ai_flywheel.core.contracts.schemas import LLMRequest, LLMResponse

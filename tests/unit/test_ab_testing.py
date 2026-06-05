@@ -1,6 +1,5 @@
 """Unit tests for ABTestEngine service."""
 
-import math
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -12,7 +11,6 @@ from ai_flywheel.modules.experimentation.ab_testing.schemas import (
 )
 from ai_flywheel.modules.experimentation.ab_testing.service import (
     ABTestEngine,
-    _norm_cdf,
     _z_test_conversion,
 )
 
