@@ -11,6 +11,7 @@ import asyncio
 import structlog
 from temporalio.client import Client
 from temporalio.worker import Worker
+from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner, SandboxRestrictions
 
 from ai_flywheel.core.config import settings
 
@@ -71,6 +72,11 @@ async def run_worker() -> None:
         workflows=ALL_WORKFLOWS,
         activities=ALL_ACTIVITIES,
         max_cached_workflows=200,
+        workflow_runner=SandboxedWorkflowRunner(
+            restrictions=SandboxRestrictions.default.with_passthrough_modules(
+                "ai_flywheel",
+            )
+        ),
     )
 
     logger.info("worker_running", task_queue=settings.temporal_task_queue)
