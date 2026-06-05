@@ -404,44 +404,115 @@ Building the outreach sender:
 
 ## RunCord Integration Details
 
-### Triggering a Build
+### API
 
-**Option A: Slack trigger (simplest)**
+RunCord exposes two endpoints:
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET` | `/api/v1/repositories` | List repos the API key can access |
+| `POST` | `/api/v1/sessions` | Start a coding session (agent writes code, opens PR) |
+
+**Base URL:** `https://api.runcord.com/api/v1`
+
+**Auth:** Bearer token (`cord_sk_...`)
+
+### Creating a Build Session
+
+```bash
+curl -X POST https://api.runcord.com/api/v1/sessions \
+  -H "Authorization: Bearer $RUNCORD_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repository": "Anurag9292/ai_flywheel",
+    "message": "Build a Next.js landing page with hero section, features, and waitlist form. Deploy to Vercel."
+  }'
 ```
-Module 18 posts to Slack channel where Cord is tagged:
 
-"@cord Build a Next.js landing page for [venture name].
- Repo: github.com/user/venture-landing
- Branch: feature/build-001
- [full compiled prompt attached as thread]"
-```
+RunCord handles the rest:
+1. Spins up a sandbox (Daytona)
+2. Clones the repository
+3. Runs a coding agent (Claude Code / OpenCode)
+4. Agent writes code based on your message
+5. Opens a PR
 
-**Option B: Linear ticket (structured)**
-```
-Module 18 creates a Linear issue assigned to Cord:
+### Temporal Activity (The Integration)
 
-Title: "Build: landing page for AI Finance Coach"
-Description: [compiled prompt]
-Labels: ["build", "auto-merge"]
-```
-
-**Option C: API (when available)**
 ```python
-# Direct API integration (future — check RunCord docs for API access)
-await runcord_client.create_session(
-    repo="github.com/user/venture-landing",
-    prompt=compiled_prompt,
-    agent="claude-code",
-    branch=f"feature/{build_id}",
-)
+@activity.defn
+async def trigger_runcord_build(prompt: str, repo: str) -> dict:
+    """Trigger RunCord to execute a build. Returns session info."""
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{settings.runcord_base_url}/sessions",
+            headers={"Authorization": f"Bearer {settings.runcord_api_key}"},
+            json={
+                "repository": repo,
+                "message": prompt,
+            },
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        return response.json()
+```
+
+### Listing Available Repositories
+
+```python
+@activity.defn
+async def list_runcord_repos() -> list[str]:
+    """List repositories accessible by the RunCord API key."""
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{settings.runcord_base_url}/repositories",
+            headers={"Authorization": f"Bearer {settings.runcord_api_key}"},
+            timeout=10.0,
+        )
+        response.raise_for_status()
+        return response.json()
+```
+
+### Verifying Your Setup
+
+Test that your API key works:
+
+```bash
+# List accessible repositories (should return your repos)
+curl https://api.runcord.com/api/v1/repositories \
+  -H "Authorization: Bearer $RUNCORD_API_KEY"
+
+# Trigger a test build
+curl -X POST https://api.runcord.com/api/v1/sessions \
+  -H "Authorization: Bearer $RUNCORD_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repository": "Anurag9292/ai_flywheel",
+    "message": "Add a hello world test file at tests/test_hello.py that asserts True. Open a PR."
+  }'
 ```
 
 ### Monitoring Build Progress
 
-The Temporal workflow sleeps after triggering, then wakes on:
-- **GitHub webhook** → PR opened (signal: `pr_opened`)
-- **Timeout** → 2 hours max (escalate if exceeded)
-- **RunCord notification** → build failed (signal: `build_failed`)
+After triggering a session, the Temporal workflow:
+1. Receives the session response (contains session ID/status)
+2. Waits for GitHub webhook → PR opened (Temporal signal: `pr_opened`)
+3. Validates the PR (tests pass, acceptance criteria met)
+4. Auto-merges or requests human review
+
+```python
+# In the Temporal workflow, after triggering:
+session = await workflow.execute_activity(
+    trigger_runcord_build,
+    args=[compiled_prompt, spec.repo],
+    start_to_close_timeout=timedelta(minutes=5),
+)
+
+# Sleep until PR webhook signals us
+pr_event = await workflow.wait_condition(
+    self.pr_opened,
+    timeout=timedelta(hours=2),  # Escalate if no PR in 2 hours
+)
+```
 
 ---
 
