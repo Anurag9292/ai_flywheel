@@ -659,6 +659,203 @@ gh pr list --repo Anurag9292/ai_flywheel --limit 5
 
 ---
 
+## Verification Architecture
+
+RunCord sandboxes are isolated — they don't have your database, API keys, or env vars. Verification must happen against a **deployed preview** that has the real environment.
+
+### What RunCord Can vs. Cannot Verify
+
+| RunCord CAN verify (in sandbox) | Must verify externally (deployed preview) |
+|---------------------------------|------------------------------------------|
+| Code compiles (`npm run build`) | DB queries work |
+| Unit tests pass (mocked deps) | Real API integrations connect |
+| Linting passes | Temporal workflows execute |
+| Dev server starts | RLS policies enforced |
+| Static pages render | Forms submit to real backend |
+
+### The Split: RunCord Builds, Vercel Deploys, Temporal Verifies
+
+```
+RunCord (sandbox)              Vercel (preview deploy)           Temporal Activity
+├── Writes code                 ├── Auto-deploys PR branch        ├── Waits for deploy ready
+├── Runs unit tests             ├── Has real env vars             ├── Playwright against preview URL
+│   (mocked deps)              ├── Connected to Neon DB           ├── Screenshots
+├── Lint/build passes           ├── Has Stripe/SendGrid keys      ├── Console errors
+└── Opens PR                    └── Live preview URL              ├── Network checks (4xx/5xx)
+                                                                  └── Pass → merge / Fail → feedback
+```
+
+**Key insight:** RunCord never needs your secrets. Vercel preview deployments have them. Verification runs against the deployed preview, not the sandbox.
+
+### How It Works End-to-End
+
+```
+1. RunCord: Builds code, runs unit tests (mocked), opens PR
+2. Vercel: Auto-deploys PR branch → https://pr-{N}.your-app.vercel.app
+   (Vercel preview deployments inherit your project's env vars)
+3. Temporal Verification Activity:
+   a. Polls Vercel deployment API until status == "READY"
+   b. Runs Playwright against the live preview URL
+   c. Takes screenshots (desktop + mobile)
+   d. Captures console errors, network failures
+   e. Tests interactions (form submit, button clicks)
+   f. Checks acceptance criteria (Lighthouse, specific assertions)
+4. If verification PASSES → auto-merge PR
+5. If verification FAILS → package errors + screenshots → send to RunCord as fix prompt
+```
+
+### Verification Temporal Activity
+
+```python
+@activity.defn
+async def verify_deployed_preview(
+    preview_url: str,
+    acceptance_criteria: list[str],
+) -> dict:
+    """Verify a Vercel preview deployment with Playwright.
+    
+    Runs against the DEPLOYED preview (has real env vars, DB, APIs),
+    NOT RunCord's sandbox.
+    """
+    from playwright.async_api import async_playwright
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        
+        # Mobile viewport (Gen Z = phones)
+        page = await browser.new_page(viewport={"width": 375, "height": 812})
+
+        console_errors: list[str] = []
+        network_failures: list[dict] = []
+
+        page.on("console", lambda msg: (
+            console_errors.append(f"[{msg.type}] {msg.text}")
+            if msg.type == "error" else None
+        ))
+        page.on("response", lambda resp: (
+            network_failures.append({"status": resp.status, "url": resp.url})
+            if resp.status >= 400 else None
+        ))
+
+        # Load page
+        await page.goto(preview_url, wait_until="networkidle", timeout=30000)
+
+        # Screenshot
+        screenshot_mobile = await page.screenshot(full_page=True)
+
+        # Desktop screenshot
+        await page.set_viewport_size({"width": 1440, "height": 900})
+        await page.goto(preview_url, wait_until="networkidle")
+        screenshot_desktop = await page.screenshot(full_page=True)
+
+        # Test form submission (if applicable)
+        form_result = None
+        try:
+            email_input = await page.query_selector('input[type="email"]')
+            if email_input:
+                await email_input.fill("test@verification.dev")
+                submit = await page.query_selector('button[type="submit"]')
+                if submit:
+                    await submit.click()
+                    await page.wait_for_timeout(2000)
+                    form_result = "submitted"
+        except Exception as e:
+            form_result = f"failed: {e}"
+
+        await browser.close()
+
+    passed = (
+        len(console_errors) == 0
+        and len(network_failures) == 0
+    )
+
+    return {
+        "passed": passed,
+        "console_errors": console_errors,
+        "network_failures": network_failures,
+        "form_result": form_result,
+        "screenshot_mobile": screenshot_mobile,  # bytes → upload to R2
+        "screenshot_desktop": screenshot_desktop,
+    }
+```
+
+### Feedback Loop: Sending Errors Back to RunCord
+
+When verification fails, compile the errors into a fix prompt:
+
+```python
+@activity.defn
+async def trigger_runcord_fix(repo: str, errors: dict, pr_branch: str) -> dict:
+    """Send verification failures back to RunCord for fixing."""
+    
+    fix_prompt = f"""## Verification Failed — Fix Required
+
+The build was deployed but verification found issues.
+Branch: {pr_branch}
+
+### Console Errors
+{chr(10).join(errors['console_errors']) or 'None'}
+
+### Network Failures (4xx/5xx)
+{chr(10).join(f"- {e['status']} {e['url']}" for e in errors['network_failures']) or 'None'}
+
+### Form Test Result
+{errors.get('form_result', 'Not tested')}
+
+### What to Fix
+1. Resolve all console errors
+2. Fix any failing API calls
+3. Ensure form submission works end-to-end
+
+### Constraints
+- Do NOT change the overall structure
+- Only fix the specific issues listed above
+- Run `npm run build` to confirm no new errors
+
+When done, commit with message "fix: resolve verification errors" and push to the same branch ({pr_branch}). The PR will update automatically — do NOT open a new PR.
+"""
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{settings.runcord_base_url}/sessions",
+            headers={"Authorization": f"Bearer {settings.runcord_api_key}"},
+            json={"repository": repo, "message": fix_prompt},
+            timeout=30.0,
+        )
+        return response.json()
+```
+
+### Where Playwright Runs
+
+| Option | Best For | Cost |
+|--------|----------|------|
+| **Modal** (scale-to-zero) | Production — spin up, verify, shut down | ~$0.01/check |
+| **Fly.io machine** | If you need always-on verification | ~$5/mo |
+| **GitHub Actions** | Triggered by PR deployment event | Free (for public repos) |
+
+**Recommended for Phase 3:** Modal. It has Playwright pre-installed in their container images, scales to zero when not verifying, and costs fractions of a cent per run.
+
+### Vercel Preview Deployment Detection
+
+Vercel fires a `deployment_status` webhook when a preview is ready. Use this to trigger verification:
+
+```python
+# FastAPI webhook endpoint
+@router.post("/webhooks/vercel")
+async def vercel_deployment_webhook(payload: dict):
+    """Vercel notifies us when a preview deployment is ready."""
+    if payload.get("type") == "deployment" and payload.get("payload", {}).get("state") == "READY":
+        preview_url = payload["payload"]["url"]
+        # Signal the waiting Temporal workflow
+        await signal_workflow(
+            workflow_id=f"build-{payload['payload']['meta']['branch']}",
+            signal_name="preview_ready",
+            arg={"preview_url": f"https://{preview_url}"},
+        )
+```
+
+---
+
 ## Cost Model
 
 | Build Type | Typical Cost | Time | Template Available |
