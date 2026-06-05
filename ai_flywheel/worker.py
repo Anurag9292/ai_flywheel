@@ -1,6 +1,6 @@
 """Temporal worker entry point.
 
-Runs the Temporal worker that executes workflows and activities.
+Runs the Temporal worker that executes all platform workflows and activities.
 Start with: python -m ai_flywheel.worker
 """
 
@@ -13,13 +13,40 @@ from temporalio.client import Client
 from temporalio.worker import Worker
 
 from ai_flywheel.core.config import settings
+
+# Phase 0: Sample workflow
 from ai_flywheel.workflows.sample import (
     SampleWorkflow,
     greet_activity,
     llm_activity,
 )
 
+# Phase 1: Agent Factory workflows and activities
+from ai_flywheel.modules.agent_runtime.agent_factory.execution import (
+    ApprovalAgentWorkflow,
+    ChainAgentWorkflow,
+    ParallelAgentWorkflow,
+    SingleAgentWorkflow,
+    execute_agent_activity,
+)
+
 logger = structlog.get_logger()
+
+# All workflows the worker can execute
+ALL_WORKFLOWS = [
+    SampleWorkflow,
+    SingleAgentWorkflow,
+    ChainAgentWorkflow,
+    ParallelAgentWorkflow,
+    ApprovalAgentWorkflow,
+]
+
+# All activities the worker can execute
+ALL_ACTIVITIES = [
+    greet_activity,
+    llm_activity,
+    execute_agent_activity,
+]
 
 
 async def run_worker() -> None:
@@ -29,6 +56,8 @@ async def run_worker() -> None:
         host=settings.temporal_host,
         namespace=settings.temporal_namespace,
         task_queue=settings.temporal_task_queue,
+        workflows=len(ALL_WORKFLOWS),
+        activities=len(ALL_ACTIVITIES),
     )
 
     client = await Client.connect(
@@ -39,8 +68,8 @@ async def run_worker() -> None:
     worker = Worker(
         client,
         task_queue=settings.temporal_task_queue,
-        workflows=[SampleWorkflow],
-        activities=[greet_activity, llm_activity],
+        workflows=ALL_WORKFLOWS,
+        activities=ALL_ACTIVITIES,
         max_cached_workflows=200,
     )
 
