@@ -1,12 +1,15 @@
 """Agent management and execution endpoints."""
+import asyncio
 import time
 
-from fastapi import APIRouter, HTTPException
+import structlog
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from typing import Any
 
 from ai_flywheel.core.database import get_session
+from ai_flywheel.core.events import get_event_bus
 from ai_flywheel.core.llm import generate
 from ai_flywheel.core.models import Venture
 from ai_flywheel.modules.agent_runtime.agent_factory.intelligence import VentureIntelligenceStore
@@ -18,12 +21,23 @@ from ai_flywheel.modules.agent_runtime.agent_factory.schemas import (
     AgentExecutionResult,
 )
 from ai_flywheel.modules.agent_runtime.agent_factory.service import AgentFactory
+from ai_flywheel.modules.experimentation.ab_testing.schemas import ExperimentCreate, RecordObservationRequest
+from ai_flywheel.modules.experimentation.ab_testing.service import ABTestEngine
+from ai_flywheel.modules.experimentation.feedback.schemas import FeedbackCreate
+from ai_flywheel.modules.experimentation.feedback.service import FeedbackCollector
+from ai_flywheel.modules.experimentation.learning_loop import LearningLoop
 from ai_flywheel.modules.product_intelligence.offer_design.models import Offer
 from ai_flywheel.modules.product_intelligence.venture_thesis.models import Thesis
+
+logger = structlog.get_logger()
 
 router = APIRouter()
 factory = AgentFactory()
 intelligence_store = VentureIntelligenceStore()
+feedback_collector = FeedbackCollector()
+ab_engine = ABTestEngine()
+learning_loop = LearningLoop()
+event_bus = get_event_bus()
 
 
 # --- Schemas for new endpoints ---
@@ -342,3 +356,166 @@ async def recommend_next_action(request: NextActionRequest):
         recommendation=response.content.strip(),
         context_used=context_used[:500],
     )
+
+
+# --- Feedback & Learning Loop ---
+
+
+class AgentFeedbackRequest(BaseModel):
+    venture_id: str
+    execution_id: str
+    agent_id: str
+    rating: int = Field(..., ge=1, le=5)
+    comment: str = ""
+
+
+async def _auto_experiment_and_learn(venture_id: str, agent_id: str, agent_name: str, rating: float) -> None:
+    """Background task: auto-create experiment per agent, record observation, and trigger learning loop."""
+    experiment_name = f"{agent_name} performance"
+
+    # Check if an experiment already exists for this agent
+    experiments = await ab_engine.list_experiments(venture_id)
+    agent_experiment = None
+    for exp in experiments:
+        if exp.name == experiment_name:
+            agent_experiment = exp
+            break
+
+    if agent_experiment is None:
+        # Auto-create experiment on first feedback (Feature 5b)
+        create_data = ExperimentCreate(
+            name=experiment_name,
+            hypothesis=f"Agent '{agent_name}' produces high-quality outputs (avg rating > 4.0)",
+            experiment_type="ab_test",
+            variants=[
+                {"name": "current_config", "is_control": True, "config": {"agent_id": agent_id}},
+            ],
+            metric_name="user_rating",
+            metric_type="continuous",
+            confidence_level=0.95,
+            sample_size_target=5,
+        )
+        agent_experiment = await ab_engine.create_experiment(venture_id, create_data)
+        # Auto-start the experiment
+        await ab_engine.start_experiment(venture_id, agent_experiment.id)
+
+        logger.info(
+            "auto_experiment_created",
+            venture_id=venture_id,
+            agent_id=agent_id,
+            experiment_id=agent_experiment.id,
+        )
+
+    # Record observation if experiment is running
+    if agent_experiment.status == "running":
+        observation = RecordObservationRequest(
+            experiment_id=agent_experiment.id,
+            variant_name="current_config",
+            value=rating,
+            user_id=None,
+            context={"agent_id": agent_id},
+        )
+        await ab_engine.record_observation(venture_id, observation)
+
+        # Check if we should conclude: 5+ feedbacks with avg > 4.0
+        results = await ab_engine.get_results(venture_id, agent_experiment.id)
+        control_stats = next(
+            (v for v in results.variants if v.name == "current_config"), None
+        )
+
+        if control_stats and control_stats.observations >= 5 and control_stats.mean > 4.0:
+            # Declare winner and conclude experiment (Feature 5b criteria met)
+            await ab_engine.conclude_experiment(venture_id, agent_experiment.id)
+
+            # Trigger learning loop pattern extraction (Feature 5c)
+            await learning_loop.on_experiment_concluded(venture_id, agent_experiment.id)
+
+            logger.info(
+                "auto_experiment_concluded",
+                venture_id=venture_id,
+                agent_id=agent_id,
+                experiment_id=agent_experiment.id,
+                avg_rating=control_stats.mean,
+            )
+        else:
+            # Route feedback through learning loop (Feature 5a)
+            await learning_loop.on_feedback_received(
+                venture_id=venture_id,
+                feedback_id="",
+                experiment_id=agent_experiment.id,
+            )
+
+
+@router.post("/feedback")
+async def submit_agent_feedback(request: AgentFeedbackRequest, background_tasks: BackgroundTasks) -> dict:
+    """Submit feedback on an agent execution output.
+
+    Stores feedback via the FeedbackCollector, emits agent.feedback.received event,
+    and triggers auto-experiment tracking + learning loop in the background.
+    """
+    venture_id = request.venture_id
+
+    # 1. Resolve agent name for experiment naming
+    agent_name = request.agent_id
+    try:
+        async with get_session(venture_id) as session:
+            stmt = select(AgentBlueprint).where(
+                AgentBlueprint.id == request.agent_id,
+                AgentBlueprint.venture_id == venture_id,
+                AgentBlueprint.deleted_at.is_(None),
+            )
+            result = await session.execute(stmt)
+            blueprint = result.scalar_one_or_none()
+            if blueprint:
+                agent_name = blueprint.name
+    except Exception:
+        pass
+
+    # 2. Store feedback via FeedbackCollector
+    feedback_data = FeedbackCreate(
+        feedback_type="explicit",
+        category="rating",
+        source_module="agent_runtime",
+        target_module="experimentation",
+        entity_id=request.execution_id,
+        entity_type="agent_output",
+        rating=float(request.rating),
+        correction_text=request.comment if request.comment else None,
+        context={
+            "agent_id": request.agent_id,
+            "agent_name": agent_name,
+            "execution_id": request.execution_id,
+        },
+    )
+    feedback_response = await feedback_collector.collect(venture_id, feedback_data)
+
+    # 3. Emit agent.feedback.received event
+    await event_bus.publish(
+        event_type="agent.feedback.received",
+        source_module="agent_runtime",
+        payload={
+            "feedback_id": feedback_response.id,
+            "venture_id": venture_id,
+            "agent_id": request.agent_id,
+            "execution_id": request.execution_id,
+            "rating": request.rating,
+            "comment": request.comment,
+        },
+        venture_id=venture_id,
+    )
+
+    # 4. Trigger auto-experiment + learning loop in background (Feature 5)
+    background_tasks.add_task(
+        _auto_experiment_and_learn,
+        venture_id=venture_id,
+        agent_id=request.agent_id,
+        agent_name=agent_name,
+        rating=float(request.rating),
+    )
+
+    return {
+        "status": "feedback_submitted",
+        "feedback_id": feedback_response.id,
+        "rating": request.rating,
+        "message": f"Feedback recorded for execution {request.execution_id}",
+    }

@@ -5,6 +5,59 @@ import { api } from "@/lib/api";
 import { PageHeader, Card, Button, Modal, VentureSelector, Spinner, EmptyState, Badge, Input, Textarea, Select } from "@/components/ui";
 import { statusVariant } from "@/components/ui/badge";
 
+function RatingSection({ ventureId, agentId, executionId }: { ventureId: string; agentId: string; executionId: string }) {
+  const [rating, setRating] = useState<number | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  async function handleRate(value: number) {
+    setSubmitting(true);
+    try {
+      await api.agents.submitFeedback({
+        venture_id: ventureId,
+        execution_id: executionId,
+        agent_id: agentId,
+        rating: value,
+      });
+      setRating(value);
+      setSubmitted(true);
+    } catch {
+      // Silently handle errors
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[var(--border-subtle)]">
+      <span className="text-xs text-[var(--text-muted)]">Rate this output:</span>
+      <div className="flex gap-1">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <button
+            key={star}
+            onClick={() => handleRate(star)}
+            disabled={submitting || submitted}
+            className={`text-sm transition-colors ${
+              rating && star <= rating
+                ? "text-amber-400"
+                : "text-[var(--text-muted)] hover:text-amber-400"
+            } disabled:cursor-not-allowed`}
+            title={`Rate ${star}/5`}
+          >
+            {rating && star <= rating ? "★" : "☆"}
+          </button>
+        ))}
+      </div>
+      {submitted && (
+        <span className="text-[10px] text-green-400 ml-2">Feedback saved</span>
+      )}
+      {submitting && (
+        <span className="text-[10px] text-[var(--text-muted)] ml-2">Saving...</span>
+      )}
+    </div>
+  );
+}
+
 export default function AgentsPage() {
   const [selectedVenture, setSelectedVenture] = useState("");
   const [agents, setAgents] = useState<any[]>([]);
@@ -336,6 +389,13 @@ export default function AgentsPage() {
                 <div className="code-block p-3 rounded-md text-sm text-[var(--text-secondary)] whitespace-pre-wrap max-h-60 overflow-y-auto">
                   {executeResult.output}
                 </div>
+              )}
+              {executeResult.execution_id && (
+                <RatingSection
+                  ventureId={selectedVenture}
+                  agentId={executeAgentId}
+                  executionId={executeResult.execution_id}
+                />
               )}
             </div>
           )}

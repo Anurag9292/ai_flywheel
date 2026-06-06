@@ -112,6 +112,8 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ venture_id: ventureId }),
       }),
+    submitFeedback: (data: { venture_id: string; execution_id: string; agent_id: string; rating: number; comment?: string }) =>
+      apiFetch<any>(`/api/agents/feedback`, { method: "POST", body: JSON.stringify(data) }),
   },
   discovery: {
     listProjects: (ventureId: string) =>

@@ -15,6 +15,7 @@ interface IntelligenceItem {
   cost_usd: number;
   trace_id: string | null;
   created_at: string;
+  rating?: number;
 }
 
 interface NextAction {
@@ -50,6 +51,8 @@ export default function VentureCommandCenter() {
   const [loadingIntel, setLoadingIntel] = useState(true);
   const [loadingAction, setLoadingAction] = useState(false);
   const [runningNetwork, setRunningNetwork] = useState(false);
+  const [ratings, setRatings] = useState<Record<string, number>>({});
+  const [ratingSubmitting, setRatingSubmitting] = useState<string | null>(null);
 
   useEffect(() => {
     if (!ventureId) return;
@@ -101,6 +104,23 @@ export default function VentureCommandCenter() {
       alert("Network run failed: " + err.message);
     } finally {
       setRunningNetwork(false);
+    }
+  }
+
+  async function handleRating(item: IntelligenceItem, rating: number) {
+    setRatingSubmitting(item.id);
+    try {
+      await api.agents.submitFeedback({
+        venture_id: ventureId,
+        execution_id: item.id,
+        agent_id: item.agent_id,
+        rating,
+      });
+      setRatings((prev) => ({ ...prev, [item.id]: rating }));
+    } catch (err: any) {
+      // Silently fail for now
+    } finally {
+      setRatingSubmitting(null);
     }
   }
 
@@ -224,37 +244,80 @@ export default function VentureCommandCenter() {
           </p>
         ) : (
           <div className="space-y-3 max-h-[500px] overflow-y-auto">
-            {intelligence.map((item) => (
-              <div
-                key={item.id}
-                className="relative pl-6 pb-3 border-l-2 border-[var(--border-subtle)] last:border-l-0"
-              >
-                {/* Timeline dot */}
-                <div className="absolute left-[-5px] top-1 w-2 h-2 rounded-full bg-violet-500" />
+            {intelligence.map((item) => {
+              const currentRating = ratings[item.id] || item.rating;
+              return (
+                <div
+                  key={item.id}
+                  className="relative pl-6 pb-3 border-l-2 border-[var(--border-subtle)] last:border-l-0"
+                >
+                  {/* Timeline dot */}
+                  <div className="absolute left-[-5px] top-1 w-2 h-2 rounded-full bg-violet-500" />
 
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Badge variant="blue">{item.agent_name}</Badge>
-                      {item.cost_usd > 0 && (
-                        <span className="text-[10px] text-[var(--text-muted)]">
-                          ${item.cost_usd.toFixed(4)}
-                        </span>
-                      )}
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Badge variant="blue">{item.agent_name}</Badge>
+                        {item.cost_usd > 0 && (
+                          <span className="text-[10px] text-[var(--text-muted)]">
+                            ${item.cost_usd.toFixed(4)}
+                          </span>
+                        )}
+                        {currentRating && (
+                          <span className="text-[10px] text-amber-400 flex items-center gap-0.5">
+                            {"★".repeat(currentRating)}{"☆".repeat(5 - currentRating)}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-[var(--text-secondary)] mb-1 truncate">
+                        Task: {item.task}
+                      </p>
+                      <p className="text-xs text-[var(--text-muted)] line-clamp-3">
+                        {item.output}
+                      </p>
+                      {/* Rating buttons */}
+                      <div className="flex items-center gap-1 mt-2">
+                        <span className="text-[10px] text-[var(--text-muted)] mr-1">Rate:</span>
+                        <button
+                          onClick={() => handleRating(item, 5)}
+                          disabled={ratingSubmitting === item.id}
+                          className={`p-1 rounded transition-colors ${
+                            currentRating && currentRating >= 4
+                              ? "text-green-400"
+                              : "text-[var(--text-muted)] hover:text-green-400"
+                          }`}
+                          title="Thumbs up (5)"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M7 10v12" /><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => handleRating(item, 1)}
+                          disabled={ratingSubmitting === item.id}
+                          className={`p-1 rounded transition-colors ${
+                            currentRating && currentRating <= 2
+                              ? "text-red-400"
+                              : "text-[var(--text-muted)] hover:text-red-400"
+                          }`}
+                          title="Thumbs down (1)"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M17 14V2" /><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22h0a3.13 3.13 0 0 1-3-3.88Z" />
+                          </svg>
+                        </button>
+                        {ratingSubmitting === item.id && (
+                          <span className="text-[10px] text-[var(--text-muted)] ml-1">saving...</span>
+                        )}
+                      </div>
                     </div>
-                    <p className="text-xs text-[var(--text-secondary)] mb-1 truncate">
-                      Task: {item.task}
-                    </p>
-                    <p className="text-xs text-[var(--text-muted)] line-clamp-3">
-                      {item.output}
-                    </p>
+                    <span className="text-[10px] text-[var(--text-muted)] whitespace-nowrap ml-3">
+                      {new Date(item.created_at).toLocaleString()}
+                    </span>
                   </div>
-                  <span className="text-[10px] text-[var(--text-muted)] whitespace-nowrap ml-3">
-                    {new Date(item.created_at).toLocaleString()}
-                  </span>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Card>
