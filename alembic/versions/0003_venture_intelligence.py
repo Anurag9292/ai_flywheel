@@ -24,9 +24,9 @@ def upgrade() -> None:
             trace_id VARCHAR,
             created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
             CONSTRAINT fk_vi_venture FOREIGN KEY (venture_id) REFERENCES ventures(id)
-        );
-        CREATE INDEX IF NOT EXISTS idx_vi_venture ON venture_intelligence(venture_id, created_at DESC);
+        )
     """)
+    op.execute("CREATE INDEX IF NOT EXISTS idx_vi_venture ON venture_intelligence(venture_id, created_at DESC)")
 
 
 def downgrade() -> None:
