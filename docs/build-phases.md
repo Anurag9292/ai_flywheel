@@ -6,7 +6,42 @@ AI Flywheel is built in seven phases (Phase 0–6) over 13+ weeks. Each phase de
 
 ---
 
-## Phase 0: Bare Metal (Week 1-2)
+## Current Status (as of 2026-06-06)
+
+| Phase | Status | Completion | Key Unlock |
+|-------|--------|-----------|------------|
+| **0: Bare Metal** | ✅ Complete | ~100% | Execution spine proven |
+| **1: First Agent** | ✅ Complete | ~90% | Agent runs real work through spine |
+| **2: Data + Market** | ⚠️ Mostly done | ~60% | Market research works, data pipeline untested |
+| **3: Product + Offer** | ⚠️ Mostly done | ~50% | Offer works, no integrations/evidence ladder |
+| **4: ML + Advanced** | ⚠️ Services exist | ~30% | All services built, none operational E2E |
+| **5: Production** | ❌ Not done | ~15% | Services exist, all simulated |
+| **6: Flywheel** | ⚠️ Partial | ~40% | Visual builder + CLI + Slack built |
+
+### What Works End-to-End Today
+- Venture Lifecycle Workflow: Thesis → Discovery → Market → Offer → Blueprint → Agents (via Temporal)
+- Agent execution with LLM (GPT-4o-mini), cost tracking, tracing
+- Customer Discovery: interview guide generation, transcript analysis
+- Market Intelligence: signal analysis, opportunity scoring (LLM-powered)
+- Offer Design: ICP + positioning auto-generated on creation
+- Workflow Blueprint: LLM-generated graph compilation
+- Visual Workflow Builder (React Flow)
+- CLI with real service calls
+- Slack Bolt integration (structure in place)
+- Dark cosmic UI with 12 pages + reusable component library
+
+### Critical Gaps
+1. **Outputs don't feed forward** — agent results disappear, no unified venture context
+2. **Memory Engine not wired** — agents don't remember previous interactions
+3. **Data pipeline untested** — Ingestor, Embeddings, Knowledge Graph never exercised E2E
+4. **No real external integrations** — Tool Forge has no connected tools
+5. **No Evidence Ladder enforcement** — thesis tracks evidence but doesn't gate the lifecycle
+6. **No cross-venture dashboard** — can't see flywheel effect
+7. **Feedback → Experiment → Pattern loop not closed in practice**
+
+---
+
+## Phase 0: Bare Metal (Week 1-2) — ✅ COMPLETE
 
 ### Goal
 
@@ -22,44 +57,21 @@ Prove the execution spine works. A dummy workflow can execute across multiple st
 | System 1: Platform Core | **Trace & Observability (#5)** | Distributed tracing, error analysis |
 | System 2: Agent Intelligence | **LLM Gateway (#7)** | Multi-provider with cost tracking |
 
-### Dependencies
+### Success Criteria — ALL MET ✅
 
-- PostgreSQL + pgvector (via Docker)
-- Temporal (local dev server via Docker)
-- At least one LLM API key (OpenAI or Anthropic)
-- Python 3.12+
-
-### Key Technical Decisions
-
-1. **Temporal.io as the workflow engine:** Not a custom Postgres state machine. Workflows survive container restarts via event history replay. This is the foundation everything else builds on.
-2. **Row-Level Security (RLS) on PostgreSQL from the first table creation:** Every query requires `venture_id` context at the DB session level. Security is structural, not application-level.
-3. **In-process event bus with DB persistence:** No external broker yet. Events publish in-process and persist to Postgres for replay and audit.
-4. **All module methods are async:** The event bus, database layer, and API use asyncio throughout. No blocking calls.
-5. **Every query requires venture_id context:** At the DB session level. Cross-venture data access is impossible by construction.
-
-### Testing Strategy
-
-- Unit tests for every core module (config loading, database sessions, event pub/sub)
-- Temporal workflow execution tested with container restart simulation
-- Trace completeness validation (every task produces a trace, every trace has cost attribution)
-- RLS enforcement tested (queries without venture_id context fail)
-- LLM Gateway tested with mock providers for deterministic cost tracking
-
-### Success Criteria
-
-- [ ] A multi-step workflow executes via Temporal
-- [ ] Workflow survives container restart (state hydration works)
-- [ ] Every step is traced with timing, cost, and inputs/outputs
-- [ ] LLM call goes through gateway, cost is recorded
-- [ ] RLS prevents cross-venture data access at the DB level
+- [x] A multi-step workflow executes via Temporal
+- [x] Workflow survives container restart (state hydration works)
+- [x] Every step is traced with timing, cost, and inputs/outputs
+- [x] LLM call goes through gateway, cost is recorded
+- [x] RLS prevents cross-venture data access at the DB level
 
 ### Deliverable
 
-The execution spine is proven solid. Nothing else until this works.
+The execution spine is proven solid. ✅
 
 ---
 
-## Phase 1: First Agent (Week 3-4)
+## Phase 1: First Agent (Week 3-4) — ✅ COMPLETE
 
 ### Goal
 
@@ -75,125 +87,68 @@ A real agent runs a real task through the spine.
 | System 5: Venture Validation | **Customer Discovery Engine (#26)** | First real use case |
 | System 6: Learning & Optimization | **Cost Optimizer (#35)** | Budget tracking and alerts |
 
-### Dependencies
-
-- Phase 0 complete (execution spine proven)
-- PostgreSQL with RLS configured (from Phase 0)
-- Temporal running (from Phase 0)
-- At least one LLM API key (OpenAI or Anthropic)
-- Python 3.12+, Node.js 20+
-
-### Key Technical Decisions
-
-1. **Agents defined as data (YAML/JSON), not code:** Agent behavior is configuration. This enables experimentation without deploys.
-2. **Agent execution = Temporal activity:** Retryable, timeout-able, and independently cost-tracked.
-3. **Multi-agent orchestration = Temporal child workflows:** Fan-out, sequential chains, and coordination all expressed as workflow primitives.
-4. **Human review = Temporal signals:** Workflow pauses, emits a review request event, and resumes only when a signal arrives (approved/rejected/edited). No polling, no timers.
-5. **Memory access control:** Agent blueprints declare which memory tiers they can access. Enforced at runtime.
-
-### Testing Strategy
-
-- Agent definition and execution end-to-end (define via config → execute → trace → cost)
-- Multi-step workflow with approval pause tested (signal sent, workflow resumes)
-- Customer Discovery Engine tested with mock interview transcripts
-- Cost tracking validated across multiple agent executions
-- Prompt versioning lifecycle (create v1, update to v2, rollback to v1)
-
 ### Success Criteria
 
-- [ ] Create an agent via config, execute it against a task
-- [ ] Agent execution traces through the full spine (event → task → trace → metric → cost)
-- [ ] Customer Discovery Engine generates interview guide from domain input
-- [ ] Multi-step workflow pauses for approval, resumes when approved
-- [ ] Cost tracked per agent per execution
+- [x] Create an agent via config, execute it against a task
+- [x] Agent execution traces through the full spine (event → task → trace → metric → cost)
+- [x] Customer Discovery Engine generates interview guide from domain input
+- [x] Multi-step workflow pauses for approval, resumes when approved
+- [x] Cost tracked per agent per execution
+
+### Known Issues
+- Old Temporal workflows (created before signal handler fix) cannot replay — must be terminated and recreated
 
 ### Deliverable
 
-A real agent does real work, fully traced and costed.
-
-### Capabilities Unlocked
-
-After Phase 0 + Phase 1, you can:
-- Run customer discovery interviews with AI-assisted analysis
-- Create and test agents with versioned prompts
-- Execute agents as Temporal workflows with full observability
-- Multi-agent orchestration with parallel fan-out and sequential chains
-- Human-in-the-loop approval flows that survive indefinite waits
-- See full cost breakdown by venture, module, task, and provider
-- Debug any action through its complete trace
-- All data isolated per venture via RLS at the database level
+A real agent does real work, fully traced and costed. ✅
 
 ---
 
-## Phase 2: Data Foundation + Market Intelligence (Week 5-6)
+## Phase 2: Data Foundation + Market Intelligence (Week 5-6) — ⚠️ 60% COMPLETE
 
 ### Goal
 
-Build the research and data layer. The platform can discover markets, ingest data, validate quality, generate embeddings for RAG, and construct knowledge graphs. You can now research whether a market is worth entering.
+Build the research and data layer. The platform can discover markets, ingest data, validate quality, generate embeddings for RAG, and construct knowledge graphs.
 
 ### What Gets Built (7 modules)
 
-| Source System | Module | Purpose |
-|---------------|--------|---------|
-| System 1: Platform Core | **Identity & Tenancy** | Multi-tenant isolation, user management |
-| System 3: Data & Knowledge | **Universal Ingestor** | Ingest data from any source into normalized format |
-| System 3: Data & Knowledge | **Data Quality Engine** | Validate, profile, and score dataset quality |
-| System 3: Data & Knowledge | **Embedding Engine** | Generate and manage vector embeddings |
-| System 3: Data & Knowledge | **Knowledge Graph Builder** | Extract entities and relationships |
-| System 5: Venture Validation | **Market & Signal Intelligence** | Monitor markets, competitors, opportunities |
-| System 5: Venture Validation | **Venture Thesis Engine** | Formalize and track hypotheses |
-
-### Dependencies
-
-- Phase 0 + Phase 1 complete (Execution Spine + First Agent)
-- Object storage for raw data (S3-compatible or local MinIO)
-- pgvector extension installed (from Phase 0)
-
-### Key Technical Decisions
-
-1. **Market Intelligence is event-driven:** Monitors signals on schedule or on-demand, publishing `signal.detected` events.
-2. **Ingestor is pluggable:** Parser plugins for CSV, JSON, PDF, HTML, API responses. New formats added without modifying core.
-3. **Quality is automated:** Data Quality Engine runs automatically on ingestion. Scores completeness, consistency, freshness, domain relevance.
-4. **Embeddings are chunked:** Documents split into semantic chunks before embedding. Chunk strategy configurable per venture.
-5. **Knowledge graph is incremental:** New data appends edges; confidence scores update as corroborating evidence arrives.
-6. **Thesis Engine integrates with Evidence Ladder:** Each hypothesis has explicit rungs and validation criteria.
-
-### Testing Strategy
-
-- Market Intelligence tested with mock signal sources (RSS, API responses)
-- Universal Ingestor tested with real (small) datasets in multiple formats
-- Data Quality Engine tested against known-bad datasets (missing values, duplicates, schema drift)
-- Embedding similarity tests (known-similar documents should have high cosine similarity)
-- Knowledge Graph tested against annotated text samples
-- Venture Thesis Engine tested with hypothesis lifecycle (create → evidence → validate/invalidate)
+| Source System | Module | Purpose | Status |
+|---------------|--------|---------|--------|
+| System 1: Platform Core | **Identity & Tenancy** | Multi-tenant isolation | ✅ Done |
+| System 3: Data & Knowledge | **Universal Ingestor** | Ingest data from any source | ⚠️ Service exists, not tested E2E |
+| System 3: Data & Knowledge | **Data Quality Engine** | Validate, profile, score | ⚠️ Service exists, not tested E2E |
+| System 3: Data & Knowledge | **Embedding Engine** | Generate/manage vectors | ⚠️ Service exists, not tested E2E |
+| System 3: Data & Knowledge | **Knowledge Graph Builder** | Extract entities/relationships | ⚠️ Service exists, not tested E2E |
+| System 5: Venture Validation | **Market & Signal Intelligence** | Monitor markets, competitors | ✅ Working with LLM |
+| System 5: Venture Validation | **Venture Thesis Engine** | Formalize/track hypotheses | ✅ Working with evidence + kill signals |
 
 ### Success Criteria
 
-- [ ] Market & Signal Intelligence identifies relevant trends for a given venture domain
-- [ ] Venture Thesis Engine tracks hypotheses through evidence ladder rungs
-- [ ] Universal Ingestor successfully ingests CSV, JSON, and PDF formats
-- [ ] Data Quality Engine produces quality report with actionable findings
-- [ ] Embedding Engine generates vectors and similarity search returns relevant results
-- [ ] Knowledge Graph Builder extracts entities and relationships from text
-- [ ] Identity & Tenancy isolates data between ventures
+- [x] Market & Signal Intelligence identifies relevant trends for a given venture domain
+- [x] Venture Thesis Engine tracks hypotheses through evidence ladder rungs
+- [ ] **Universal Ingestor successfully ingests CSV, JSON, and PDF formats**
+- [ ] **Data Quality Engine produces quality report with actionable findings**
+- [ ] **Embedding Engine generates vectors and similarity search returns relevant results**
+- [ ] **Knowledge Graph Builder extracts entities and relationships from text**
+- [x] Identity & Tenancy isolates data between ventures
 - [ ] All modules publish events and track costs through Task Runtime
-- [ ] End-to-end: market signal → hypothesis → data ingestion → quality check → embed → graph
+- [ ] **End-to-end: market signal → hypothesis → data ingestion → quality check → embed → graph**
 
-### Capabilities Unlocked
+### Remaining Action Items
 
-After Phase 2, you can:
-- Research markets with AI-assisted signal aggregation
-- Formalize and track venture hypotheses through evidence stages
-- Ingest CSVs, PDFs, and API data into a unified format
-- Get automatic quality reports on ingested data
-- Ask RAG-style questions against ingested data (via embeddings)
-- Explore knowledge graphs of entities and relationships
-- Isolate data between ventures with proper tenancy
-- Full research and data pipeline operational
+| # | Action | Priority | Effort |
+|---|--------|----------|--------|
+| 2.1 | Test Universal Ingestor with real CSV/JSON/PDF files | High | Small |
+| 2.2 | Test Embedding Engine — create collection, embed docs, run similarity search | High | Small |
+| 2.3 | Test Knowledge Graph — ingest text, verify entity/relationship extraction | High | Small |
+| 2.4 | Test Data Quality Engine — feed bad data, verify quality report | Medium | Small |
+| 2.5 | Wire end-to-end pipeline: ingest → quality → embed → graph (Temporal workflow) | High | Medium |
+| 2.6 | Ensure all data modules emit events + track cost | Medium | Small |
+| 2.7 | Add frontend pages for Ingestor, Embeddings, Knowledge Graph | Medium | Medium |
 
 ---
 
-## Phase 3: Product Design + Offer (Week 7-8)
+## Phase 3: Product Design + Offer (Week 7-8) — ⚠️ 50% COMPLETE
 
 ### Goal
 
@@ -201,65 +156,42 @@ Complete the validation pipeline. Design offers, create landing pages, run campa
 
 ### What Gets Built (6 modules)
 
-| Source System | Module | Purpose |
-|---------------|--------|---------|
-| System 5: Venture Validation | **Offer Design Engine** | ICP, positioning, pricing, landing copy |
-| System 5: Venture Validation | **Product Experience Engine** | Screen architecture, AI interaction patterns |
-| System 5: Venture Validation | **Workflow Blueprint Engine** | Map user flows and agent handoffs |
-| System 2: Agent Intelligence | **Tool Forge** | Create and manage tools for agents (initial integrations) |
-| System 6: Learning & Optimization | **A/B Test & Optimization Engine** | Statistical A/B testing for any configuration |
-| System 6: Learning & Optimization | **Feedback Collector** | Collect human and automated feedback systematically |
-
-### Dependencies
-
-- Phase 0-1 complete (agents, tasks, traces, Temporal workflows)
-- Phase 2 complete (market intelligence, data, embeddings)
-- External integration accounts (ad platforms, Stripe, email provider, hosting)
-
-### Key Technical Decisions
-
-1. **Offer Design is LLM-powered but structured:** Outputs are structured data (ICP profile, positioning statement, pricing table), not free-form text.
-2. **Product Experience Engine generates interaction specifications:** Defines which AI decisions are autonomous, which need explanation, which need approval.
-3. **Workflow Blueprint is executable:** Blueprints aren't just documentation — they compile into actual agent orchestration configs.
-4. **Tool Forge initial integrations:** Ad platforms (Meta, Google), Stripe (billing), Vercel (landing pages), email (SendGrid). More in later phases.
-5. **A/B tests are statistically rigorous:** Sequential testing with proper stopping rules. No peeking without correction.
-6. **Feedback is multi-signal:** Explicit (forms), implicit (behavior), and automated (output quality metrics).
-
-### Testing Strategy
-
-- Offer Design Engine tested with known market inputs → validated output structure
-- Product Experience Engine tested with various AI function types (autonomous, explanatory, approval)
-- Workflow Blueprint Engine tested by compiling blueprints and validating executable output
-- Tool Forge tested with sandboxed external API calls
-- A/B Test Engine tested with simulated data (verify statistical correctness)
-- Feedback Collector tested with multiple signal types
+| Source System | Module | Purpose | Status |
+|---------------|--------|---------|--------|
+| System 5: Venture Validation | **Offer Design Engine** | ICP, positioning, pricing, copy | ⚠️ ICP + positioning work; pricing + copy not auto-triggered |
+| System 5: Venture Validation | **Product Experience Engine** | Screen architecture, AI patterns | ⚠️ Service exists, no UI, not tested |
+| System 5: Venture Validation | **Workflow Blueprint Engine** | Map user flows, compile to agents | ✅ Working in lifecycle |
+| System 2: Agent Intelligence | **Tool Forge** | Create/manage tools for agents | ⚠️ Service exists, no real integrations |
+| System 6: Learning & Optimization | **A/B Test & Optimization Engine** | Statistical A/B testing | ⚠️ Service exists, not tested E2E |
+| System 6: Learning & Optimization | **Feedback Collector** | Collect human/automated feedback | ⚠️ Service exists, not wired |
 
 ### Success Criteria
 
-- [ ] Offer Design Engine produces complete offer package (ICP, positioning, pricing, copy) from market research input
-- [ ] Product Experience Engine generates interaction specifications for AI agent behaviors
-- [ ] Workflow Blueprint Engine compiles user flows into executable agent orchestration
-- [ ] Tool Forge connects to at least 4 external integrations (ad platform, payment, hosting, email)
-- [ ] A/B Test Engine reaches statistical significance and declares winner
-- [ ] Feedback Collector captures explicit, implicit, and automated signals
-- [ ] Evidence Ladder is fully operational: can validate a venture from market research through behavioral signal collection
-- [ ] End-to-end: offer designed → landing page created → campaign run → signals collected → hypothesis validated/invalidated
+- [x] Offer Design Engine produces ICP and positioning from market research input
+- [ ] **Offer Design produces complete package: ICP + positioning + pricing + landing copy**
+- [ ] **Product Experience Engine generates interaction specifications for AI agent behaviors**
+- [x] Workflow Blueprint Engine compiles user flows into executable agent orchestration
+- [ ] **Tool Forge connects to at least 4 external integrations (ad platform, payment, hosting, email)**
+- [ ] **A/B Test Engine reaches statistical significance and declares winner**
+- [ ] **Feedback Collector captures explicit, implicit, and automated signals**
+- [ ] **Evidence Ladder is fully operational: validate venture from research through signal collection**
+- [ ] **End-to-end: offer → landing page → campaign → signals → hypothesis validated/invalidated**
 
-### Capabilities Unlocked
+### Remaining Action Items
 
-After Phase 3, you can:
-- Design complete product offers with AI assistance
-- Map user workflows that compile into agent orchestration
-- Define AI interaction patterns (autonomous vs. supervised vs. approval)
-- Connect agents to external tools (ad platforms, payment, email, hosting)
-- Run proper A/B tests on any system component
-- Collect multi-signal feedback from users
-- Validate a venture end-to-end through the Evidence Ladder
-- Full validation pipeline: discover → research → hypothesize → design → test → validate
+| # | Action | Priority | Effort |
+|---|--------|----------|--------|
+| 3.1 | Add pricing + landing copy generation to lifecycle workflow offer stage | High | Small |
+| 3.2 | Build Product Experience page (feature prioritization, AI patterns, screens) | Medium | Medium |
+| 3.3 | Connect Tool Forge to real external APIs (start with 2: email via SendGrid, payments via Stripe) | High | Medium |
+| 3.4 | Wire Feedback Collector — after agent execution, prompt for rating → store → route to experiment | High | Medium |
+| 3.5 | Test A/B Engine end-to-end: create experiment, record observations, reach significance | High | Small |
+| 3.6 | Build Evidence Ladder enforcement: gate lifecycle stages based on evidence score | High | Medium |
+| 3.7 | End-to-end: lifecycle generates landing page copy → deploy to Vercel → collect conversion signals | Low | Large |
 
 ---
 
-## Phase 4: ML + Advanced Agents (Week 9-10)
+## Phase 4: ML + Advanced Agents (Week 9-10) — ⚠️ 30% COMPLETE
 
 ### Goal
 
@@ -267,72 +199,47 @@ Move beyond LLM prompts to real ML models, human review workflows, safety/compli
 
 ### What Gets Built (8 modules)
 
-| Source System | Module | Purpose |
-|---------------|--------|---------|
-| System 2: Agent Intelligence | **Memory Engine** | Short-term and long-term memory for agent continuity |
-| System 2: Agent Intelligence | **Human Review Engine** | Configurable human-in-the-loop workflows |
-| System 2: Agent Intelligence | **Policy Engine** | Safety, compliance, and governance rules |
-| System 4: Model & ML | **Feature Factory** | Transform raw data into ML-ready features |
-| System 4: Model & ML | **Model Forge** | Train, tune, and manage ML models |
-| System 4: Model & ML | **Evaluation Framework** | Comprehensive model evaluation with multiple metrics |
-| System 3: Data & Knowledge | **Labeling & Ground Truth** | Create and manage labeled datasets |
-| System 3: Data & Knowledge | **Privacy & PII Engine** | Detect, mask, and manage PII |
-
-### Dependencies
-
-- Phase 0-3 complete (spine, data, validation)
-- Compute resources for training (GPU optional for small models)
-- Model artifact storage (S3-compatible)
-
-### Key Technical Decisions
-
-1. **Memory is tiered:** Working memory (current task), episodic memory (recent interactions), semantic memory (embedded knowledge). Different retrieval strategies per tier.
-2. **Human Review is policy-driven:** Approval rules defined as data, not code. Thresholds, escalation paths, and timeout behaviors are configurable per venture.
-3. **Policy Engine is non-blocking by default:** Compliance checks are advisory unless explicitly configured as blocking.
-4. **Feature Factory is declarative:** Feature transformations defined as config (like dbt for ML features). Enables versioning and reproducibility.
-5. **Model Forge wraps multiple frameworks:** scikit-learn, PyTorch, and Hugging Face behind unified interface.
-6. **Evaluation is multi-dimensional:** Never a single metric. Every evaluation produces accuracy, fairness, robustness, latency, and cost metrics.
-7. **Labeling integrates with Human Review:** Human review decisions become training labels automatically.
-8. **PII detection runs on ingest:** Privacy Engine hooks into Universal Ingestor pipeline.
-
-### Testing Strategy
-
-- Memory retrieval tested with known query/document pairs across all tiers
-- Human Review tested with simulated approval flows (auto-approve, queue, escalate, timeout)
-- Policy Engine tested with known compliance scenarios
-- Feature Factory tested with known input/output pairs
-- Model Forge tested with toy datasets for fast iteration
-- Evaluation Framework tested against models with known characteristics
-- Labeling tested with inter-annotator agreement metrics
-- Privacy Engine tested with known PII patterns
+| Source System | Module | Purpose | Status |
+|---------------|--------|---------|--------|
+| System 2: Agent Intelligence | **Memory Engine** | Short/long-term memory for continuity | ⚠️ Service exists (488 lines), NOT wired to agent execution |
+| System 2: Agent Intelligence | **Human Review Engine** | Configurable HITL workflows | ⚠️ Service exists, approval flow works but routing not tested |
+| System 2: Agent Intelligence | **Policy Engine** | Safety, compliance, governance | ⚠️ Service exists (558 lines), not tested in practice |
+| System 4: Model & ML | **Feature Factory** | Transform raw data to ML features | ⚠️ Service exists, not tested |
+| System 4: Model & ML | **Model Forge** | Train/manage ML models | ⚠️ Service exists (simulated baseline, no real ML) |
+| System 4: Model & ML | **Evaluation Framework** | Comprehensive model evaluation | ⚠️ Service exists, not tested |
+| System 3: Data & Knowledge | **Labeling & Ground Truth** | Create/manage labeled datasets | ⚠️ Service exists, not tested |
+| System 3: Data & Knowledge | **Privacy & PII Engine** | Detect, mask, manage PII | ⚠️ Service exists, not tested |
 
 ### Success Criteria
 
-- [ ] Agent remembers context from previous interactions (working + episodic + semantic memory)
-- [ ] Human Review routes decisions correctly (auto-approve, queue, escalate) based on confidence thresholds
-- [ ] Policy Engine enforces safety rules and produces audit trail
-- [ ] Feature Factory transforms raw data into ML-ready features declaratively
-- [ ] Model Forge trains a classifier on venture data with proper evaluation
-- [ ] Evaluation Framework produces multi-dimensional report (accuracy, fairness, cost, latency)
-- [ ] Labeling Engine manages gold datasets with inter-annotator agreement tracking
-- [ ] Privacy Engine detects and masks PII in ingested documents
-- [ ] End-to-end: data → features → train → evaluate → review → approve → deploy
+- [ ] **Agent remembers context from previous interactions (working + episodic + semantic memory)**
+- [ ] **Human Review routes decisions correctly (auto-approve, queue, escalate) based on confidence**
+- [ ] **Policy Engine enforces safety rules and produces audit trail**
+- [ ] **Feature Factory transforms raw data into ML-ready features declaratively**
+- [ ] **Model Forge trains a classifier on venture data with proper evaluation**
+- [ ] **Evaluation Framework produces multi-dimensional report (accuracy, fairness, cost, latency)**
+- [ ] **Labeling Engine manages gold datasets with inter-annotator agreement tracking**
+- [ ] **Privacy Engine detects and masks PII in ingested documents**
+- [ ] **End-to-end: data → features → train → evaluate → review → approve → deploy**
 
-### Capabilities Unlocked
+### Remaining Action Items
 
-After Phase 4, you can:
-- Build agents with persistent memory across interactions
-- Configure human-in-the-loop workflows with policy-driven routing
-- Enforce safety and compliance policies with full audit trails
-- Train real ML models (not just LLM prompts) on venture-specific data
-- Evaluate models rigorously across multiple dimensions
-- Create and manage labeled datasets for training and evaluation
-- Detect and handle PII automatically
-- Human review decisions automatically become training data (the loop closes)
+| # | Action | Priority | Effort |
+|---|--------|----------|--------|
+| 4.1 | **Wire Memory Engine to agent execution** — agents auto-store/retrieve context between runs | Critical | Medium |
+| 4.2 | Test Human Review routing: set confidence threshold → low-confidence outputs go to queue | High | Small |
+| 4.3 | Test Policy Engine: create policy rules → execute agent → verify rule enforcement | High | Small |
+| 4.4 | Test Privacy Engine: feed text with PII → verify detection + masking | Medium | Small |
+| 4.5 | Test Labeling Engine: create task, add items, label, compute agreement | Medium | Small |
+| 4.6 | Test Feature Factory: define transforms, compute features on data | Medium | Small |
+| 4.7 | Replace simulated Model Forge with real sklearn training (basic classifier) | Medium | Medium |
+| 4.8 | Test Evaluation Framework: create suite, run eval, compare runs | Medium | Small |
+| 4.9 | Wire end-to-end: ingest data → extract features → train model → evaluate → human review | Low | Large |
+| 4.10 | Human review decisions become training labels (close the loop) | Medium | Medium |
 
 ---
 
-## Phase 5: Production + Scale (Week 11-12)
+## Phase 5: Production + Scale (Week 11-12) — ❌ 15% COMPLETE
 
 ### Goal
 
@@ -340,163 +247,151 @@ Production-grade deployment, reliability, simulation testing. Can ship real vent
 
 ### What Gets Built (4 modules)
 
-| Source System | Module | Purpose |
-|---------------|--------|---------|
-| System 4: Model & ML | **Synthetic Data Generator** | Generate training data when real data is scarce |
-| System 4: Model & ML | **Simulation Engine** | Test agent networks against synthetic scenarios |
-| System 7: Production & Reliability | **Deployment Engine** | Package and deploy agents to production |
-| System 7: Production & Reliability | **Reliability & Incident Engine** | Monitor health, detect anomalies, auto-heal |
-
-### Dependencies
-
-- Phase 0-4 complete
-- Container registry (for Deployment Engine)
-- Monitoring infrastructure (for Reliability Engine)
-- Production hosting environment
-
-### Key Technical Decisions
-
-1. **Synthetic Data is validated:** Generated data passes through Data Quality Engine. Quality score must meet threshold before use in training.
-2. **Simulation runs before every deploy:** Agent networks are tested against synthetic scenarios that cover edge cases before production promotion.
-3. **Deployment is container-based:** Agents packaged as containers with standardized health checks and scaling policies.
-4. **Canary deployments by default:** New versions receive 10% traffic, promote to 100% only if metrics hold.
-5. **Reliability Engine is proactive:** Anomaly detection triggers before incidents. Auto-scaling, circuit breaking, and fallback routing are automatic.
-6. **Incident Engine learns:** Each incident's resolution is captured and used to auto-resolve similar future incidents.
-
-### Testing Strategy
-
-- Synthetic Data validated against statistical properties of source data
-- Simulation Engine tested with known scenarios (expected outcomes defined)
-- Deployment Engine tested with dummy containers in staging environment
-- Reliability Engine tested with chaos engineering (simulated failures, load spikes)
-- End-to-end deployment pipeline tested with rollback scenarios
+| Source System | Module | Purpose | Status |
+|---------------|--------|---------|--------|
+| System 4: Model & ML | **Synthetic Data Generator** | Generate training data | ⚠️ Service exists, not tested |
+| System 4: Model & ML | **Simulation Engine** | Test agent networks vs scenarios | ⚠️ Service exists, not tested |
+| System 7: Production & Reliability | **Deployment Engine** | Package and deploy agents | ⚠️ Service exists (simulated URLs) |
+| System 7: Production & Reliability | **Reliability & Incident Engine** | Monitor, detect, auto-heal | ⚠️ Service exists, not tested |
 
 ### Success Criteria
 
-- [ ] Synthetic Data Generator produces statistically valid data for augmenting small datasets
-- [ ] Simulation Engine tests agent network against 100+ synthetic scenarios before deploy
-- [ ] Deployment Engine packages and deploys agent network as production service
-- [ ] Canary deployment detects regression and auto-rolls back
-- [ ] Reliability Engine detects anomalies and auto-scales or circuit-breaks
-- [ ] Incident Engine captures resolution and applies it to similar future incidents
-- [ ] End-to-end: simulate → deploy canary → monitor → promote or rollback
+- [ ] **Synthetic Data Generator produces statistically valid data**
+- [ ] **Simulation Engine tests agent network against 100+ synthetic scenarios before deploy**
+- [ ] **Deployment Engine packages and deploys agent network as production service**
+- [ ] **Canary deployment detects regression and auto-rolls back**
+- [ ] **Reliability Engine detects anomalies and auto-scales or circuit-breaks**
+- [ ] **Incident Engine captures resolution and applies to future incidents**
+- [ ] **End-to-end: simulate → deploy canary → monitor → promote or rollback**
 
-### Capabilities Unlocked
+### Remaining Action Items
 
-After Phase 5, you can:
-- Generate synthetic data to bootstrap new ventures or augment sparse datasets
-- Simulate agent behavior against edge cases before shipping
-- Deploy ventures to production with canary rollouts
-- Auto-detect and recover from failures
-- Ship real ventures to real customers with confidence
-- Full production lifecycle: build → simulate → deploy → monitor → heal
+| # | Action | Priority | Effort |
+|---|--------|----------|--------|
+| 5.1 | Test Synthetic Data Generator: generate data from schema, validate statistical properties | Medium | Small |
+| 5.2 | Test Simulation Engine: define scenarios, run agent network against them | Medium | Medium |
+| 5.3 | Replace simulated Deployment Engine with real Docker container deployment | High | Large |
+| 5.4 | Implement canary deployment logic: route 10% traffic, compare metrics, promote/rollback | Medium | Large |
+| 5.5 | Implement real health monitoring with anomaly detection | Medium | Medium |
+| 5.6 | Test incident capture and resolution replay | Low | Medium |
+| 5.7 | Docker Compose production deployment (already built — needs testing on real VPS) | High | Small |
 
 ---
 
-## Phase 6: Flywheel + Visual Builder (Week 13+)
+## Phase 6: Flywheel + Visual Builder (Week 13+) — ⚠️ 40% COMPLETE
 
 ### Goal
 
-Complete platform with cross-venture learning, visual tools, multi-channel interaction, and the meta-learning layer that makes each venture cheaper and faster than the last.
+Complete platform with cross-venture learning, visual tools, multi-channel interaction, and the meta-learning layer.
 
 ### What Gets Built
 
-| Source System | Component | Purpose |
-|---------------|-----------|---------|
-| System 8: Meta-Learning | **Pattern & Template Library** | Reusable patterns shared across ventures |
-| System 8: Meta-Learning | **Meta-Learning & Flywheel Engine** | System-wide intelligence and cross-venture optimization |
-| Platform UI | **Visual Graph Editor** | React Flow-based drag-and-drop agent network designer |
-| Platform UI | **Venture Templates** | Pre-built configurations for common venture types |
-| Platform UI | **Cross-Venture Dashboard** | Unified view with comparative metrics and flywheel velocity |
-| Integration | **Slack Integration** | Bot, notifications, approval workflows via Slack |
-| Integration | **CLI Tool** | Command-line interface for power users |
-
-### Dependencies
-
-- Phase 0-5 complete (all 39 modules operational)
-- Real usage data from earlier phases (for flywheel metrics and pattern extraction)
-- Frontend foundation (React, React Flow)
-
-### Key Technical Decisions
-
-1. **React Flow for graph editor:** Mature library for complex node graphs. Custom nodes per agent type. Edges represent data flow and coordination.
-2. **Templates are composable:** Venture templates compose module configurations, not monolithic blueprints. Mix elements from different templates.
-3. **Pattern Library is versioned and scored:** Each pattern has confidence score, applicability metadata, and transfer success history.
-4. **Meta-Learning uses all venture data:** Observes experiments, identifies what accelerates learning, recommends next actions across the entire platform.
-5. **Dashboard is real-time:** WebSocket updates for live metrics. Flywheel velocity shown as rate-of-improvement, not just current performance.
-6. **Slack integration is bidirectional:** Receive notifications, approve human review items, trigger commands, view dashboards — all from Slack.
-7. **CLI mirrors full platform capability:** Everything possible in UI is possible via CLI. Designed for scripting and automation.
-
-### Testing Strategy
-
-- Visual editor tested with Playwright (E2E browser tests)
-- Venture templates tested by instantiation and validation
-- Pattern Library tested with apply/validate cycle across ventures
-- Meta-Learning tested with historical venture data (does it correctly identify patterns?)
-- Dashboard tested with simulated real-time metrics data
-- Slack integration tested with mock Slack API
-- CLI tested with full command coverage
+| Source System | Component | Purpose | Status |
+|---------------|-----------|---------|--------|
+| System 8: Meta-Learning | **Pattern & Template Library** | Reusable patterns across ventures | ⚠️ Service exists, Learning Loop built, not auto-triggered |
+| System 8: Meta-Learning | **Meta-Learning & Flywheel Engine** | System-wide intelligence | ⚠️ Service exists, velocity tracking built, no real data |
+| Platform UI | **Visual Graph Editor** | React Flow drag-and-drop designer | ✅ Built |
+| Platform UI | **Venture Templates** | Pre-built configs for common types | ❌ Not built |
+| Platform UI | **Cross-Venture Dashboard** | Unified view + comparative metrics | ❌ Not built |
+| Platform UI | **Venture Command Center** | Unified per-venture view with "next action" | ❌ Not built |
+| Integration | **Slack Integration** | Bot, notifications, approvals | ⚠️ Structure built, commands are stubs |
+| Integration | **CLI Tool** | Command-line interface | ✅ Real service calls |
 
 ### Success Criteria
 
-- [ ] User can design multi-agent system visually by dragging nodes and connecting edges
-- [ ] Graph editor generates valid agent orchestration config that executes
-- [ ] Venture template creates working venture in under 5 minutes
-- [ ] Pattern Library correctly identifies and suggests applicable cross-venture patterns
-- [ ] Meta-Learning Engine measures flywheel velocity and identifies bottlenecks
-- [ ] Cross-venture dashboard shows comparative metrics with improvement trends
-- [ ] Slack bot handles notifications, approvals, and basic commands
-- [ ] CLI provides full platform access for power users
-- [ ] Flywheel metrics clearly show each successive venture getting faster/cheaper
+- [x] User can design multi-agent system visually by dragging nodes and connecting edges
+- [ ] **Graph editor generates valid config that actually executes as a Temporal workflow**
+- [ ] **Venture template creates working venture in under 5 minutes**
+- [ ] **Pattern Library identifies and suggests applicable cross-venture patterns automatically**
+- [ ] **Meta-Learning Engine measures flywheel velocity and identifies bottlenecks**
+- [ ] **Cross-venture dashboard shows comparative metrics with improvement trends**
+- [x] Slack bot handles basic commands (structure in place)
+- [x] CLI provides full platform access for power users
+- [ ] **Flywheel metrics clearly show each successive venture getting faster/cheaper**
+- [ ] **Venture Command Center: unified view with "what to do next" AI recommendations**
 
-### Capabilities Unlocked
+### Remaining Action Items
 
-After Phase 6, you can:
-- Design multi-agent systems visually without writing code
-- Launch new ventures from templates in minutes
-- See cross-venture patterns automatically identified and suggested
-- Measure flywheel velocity (is each venture accelerating?)
-- Compare all ventures on a unified dashboard
-- Interact with the platform via Slack (approvals, notifications, commands)
-- Use the CLI for scripting and automation
-- The meta-learning layer actively makes each new venture faster and cheaper
-- Platform is complete and production-ready
+| # | Action | Priority | Effort |
+|---|--------|----------|--------|
+| 6.1 | **Build Venture Command Center** — single unified page per venture showing all intelligence + AI "next action" recommendation | Critical | Large |
+| 6.2 | **Wire graph editor to execution** — "Deploy" button compiles graph → creates Temporal workflow → runs | High | Medium |
+| 6.3 | **Build venture templates** — SaaS, marketplace, API product, agency presets | Medium | Medium |
+| 6.4 | **Auto-trigger Learning Loop** — when experiment concludes, auto-extract pattern without manual call | High | Small |
+| 6.5 | **Pattern recommendations at lifecycle start** — check library before starting new venture | Medium | Small |
+| 6.6 | **Cross-venture dashboard** — compare ventures side-by-side, show velocity trends | Medium | Medium |
+| 6.7 | **Wire Slack commands to real DB** — `/flywheel ventures` queries actual ventures, costs, etc. | Medium | Small |
+| 6.8 | **Flywheel velocity display** — show in UI that venture N is X% faster than venture N-1 | Medium | Small |
+| 6.9 | **Store + display agent outputs** as venture intelligence (persist execution results) | Critical | Medium |
+| 6.10 | **Memory-backed agents** — agent execution reads/writes to Memory Engine for continuity | Critical | Medium |
 
 ---
 
-## Phase Summary
+## Priority Order — What To Build Next
 
-| Phase | Weeks | Modules Built | Cumulative | Key Unlock |
-|-------|-------|---------------|------------|------------|
-| 0 | 1-2 | 5 | 5/39 | Execution spine proven (Temporal + tracing + cost) |
-| 1 | 3-4 | 5 | 10/39 | First agent runs real work through spine |
-| 2 | 5-6 | 7 | 17/39 | Market research + data pipeline |
-| 3 | 7-8 | 6 | 23/39 | Full validation pipeline + Evidence Ladder |
-| 4 | 9-10 | 8 | 31/39 | ML models + human review + safety |
-| 5 | 11-12 | 4 | 35/39 | Production deployment + reliability |
-| 6 | 13+ | 4 + UI + integrations | 39/39 | Flywheel + visual builder + meta-learning |
+Based on impact and the "disconnected" problem:
 
-### Dependency Graph
+### Tier 1: Make It Feel Like One Product (Critical)
+
+| # | Action | From Phase | Why |
+|---|--------|-----------|-----|
+| 6.1 | Venture Command Center | Phase 6 | Single unified view ties everything together |
+| 6.9 | Persist agent outputs as venture intelligence | Phase 6 | Outputs feed forward instead of disappearing |
+| 4.1 | Wire Memory Engine to agent execution | Phase 4 | Agents remember context between runs |
+| 6.10 | Memory-backed agents | Phase 6 | Continuity across the entire venture |
+| 3.4 | Wire Feedback Collector | Phase 3 | Rate outputs → feeds experiments → improves system |
+
+### Tier 2: Complete the Core Pipeline (High)
+
+| # | Action | From Phase | Why |
+|---|--------|-----------|-----|
+| 2.5 | Wire data pipeline end-to-end | Phase 2 | Ingest → quality → embed → graph as one flow |
+| 3.1 | Add pricing + copy to lifecycle offer stage | Phase 3 | Complete offer generation |
+| 3.3 | Connect Tool Forge to real APIs | Phase 3 | Agents can actually DO things externally |
+| 3.6 | Evidence Ladder enforcement | Phase 3 | Kill gates with teeth |
+| 6.2 | Graph editor → execution | Phase 6 | Visual builder actually deploys workflows |
+| 6.4 | Auto-trigger Learning Loop | Phase 6 | Flywheel spins automatically |
+
+### Tier 3: Polish & Production (Medium)
+
+| # | Action | From Phase | Why |
+|---|--------|-----------|-----|
+| 5.7 | Test Docker Compose on real VPS | Phase 5 | Actually deployable |
+| 6.3 | Venture templates | Phase 6 | Fast venture creation |
+| 6.6 | Cross-venture dashboard | Phase 6 | Visualize the flywheel |
+| 3.2 | Product Experience page | Phase 3 | Complete the UI coverage |
+| 6.7 | Wire Slack to real DB | Phase 6 | Slack becomes actually useful |
+
+### Tier 4: Advanced / Can Wait (Lower)
+
+| # | Action | From Phase | Why |
+|---|--------|-----------|-----|
+| 4.7 | Real ML training | Phase 4 | Nice-to-have, simulated works for now |
+| 5.3-5.6 | Real deployment engine | Phase 5 | Complex, Docker Compose sufficient initially |
+| 2.7 | Data module frontend pages | Phase 2 | Backend works, UI is nice-to-have |
+| 4.9 | Full ML pipeline E2E | Phase 4 | Advanced, depends on real ML |
+
+---
+
+## Dependency Graph
 
 ```
-Phase 0 (Bare Metal — Execution Spine)
+Phase 0 (Bare Metal — Execution Spine) ✅
     │
-    └── Phase 1 (First Agent)
+    └── Phase 1 (First Agent) ✅
             │
-            ├── Phase 2 (Data + Market Intelligence)
+            ├── Phase 2 (Data + Market Intelligence) ⚠️ 60%
             │       │
-            │       └── Phase 3 (Product Design + Offer)
+            │       └── Phase 3 (Product Design + Offer) ⚠️ 50%
             │               │
-            │               └── Phase 4 (ML + Advanced Agents)
+            │               └── Phase 4 (ML + Advanced Agents) ⚠️ 30%
             │                       │
-            │                       └── Phase 5 (Production + Scale)
+            │                       └── Phase 5 (Production + Scale) ❌ 15%
             │                               │
-            │                               └── Phase 6 (Flywheel + Visual Builder)
+            │                               └── Phase 6 (Flywheel + Visual Builder) ⚠️ 40%
             │
             └── [Each phase depends on all previous phases]
 ```
-
-Phases are strictly sequential. Each phase builds on capabilities from all previous phases. This is intentional — Phase 0 proves the execution spine is solid (Temporal, tracing, cost tracking) before any real work runs on it. Phase 1 proves a real agent can execute through the spine. Nothing else proceeds until these foundations are proven.
 
 ---
 
@@ -504,13 +399,13 @@ Phases are strictly sequential. Each phase builds on capabilities from all previ
 
 | Risk | Mitigation |
 |------|-----------|
-| LLM API instability | LLM Gateway with fallback providers from Phase 0 |
-| Cost overrun during development | Cost tracking active from Phase 0; Cost Optimizer in Phase 1; every LLM call tracked |
-| Workflow state loss | Temporal.io guarantees durable execution from Phase 0; workflows survive container restarts |
-| Module coupling | Event bus enforces loose coupling; no direct module imports |
-| Scope creep per module | Each module has clear contract; extras become separate modules |
-| Database performance at scale | Single DB in Phase 0, partitioning planned from schema design |
-| "We'll add observability later" | Trace & Observability in Phase 0; non-negotiable |
-| Validation takes too long | Customer Discovery in Phase 1; can validate ideas before building |
-| Over-engineering early | Config-driven agents mean you can change behavior without code changes |
-| Integration fragility | Tool Forge abstracts external APIs; failures isolated to tool layer |
+| LLM API instability | LLM Gateway with fallback providers from Phase 0 ✅ |
+| Cost overrun during development | Cost tracking active from Phase 0 ✅ |
+| Workflow state loss | Temporal.io guarantees durable execution ✅ |
+| Module coupling | Event bus enforces loose coupling ✅ |
+| Scope creep per module | Each module has clear contract ✅ |
+| **Disconnected user experience** | **Build Venture Command Center (Tier 1 priority)** |
+| **Agent outputs lost** | **Persist execution results + venture intelligence store** |
+| **No compound learning** | **Wire Learning Loop auto-trigger + Pattern recommendations** |
+| Over-engineering early | Config-driven agents mean behavior changes without code ✅ |
+| Integration fragility | Tool Forge abstracts external APIs ✅ |
