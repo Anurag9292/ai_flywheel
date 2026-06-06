@@ -1,47 +1,73 @@
 #!/bin/bash
-# AI Flywheel — Fly.io Deployment Script
-# 
-# Prerequisites:
-#   1. Install flyctl: curl -L https://fly.io/install.sh | sh
-#   2. Login: fly auth login
-#   3. Create apps (first time only):
-#      fly apps create ai-flywheel-api
-#      fly apps create ai-flywheel-web
-#   4. Create Postgres (first time only):
-#      fly postgres create --name ai-flywheel-db --region sjc
-#      fly postgres attach ai-flywheel-db --app ai-flywheel-api
-#   5. Create Redis (first time only):
-#      fly redis create --name ai-flywheel-redis --region sjc
-#   6. Set secrets:
-#      fly secrets set OPENAI_API_KEY=sk-... --app ai-flywheel-api
-#      fly secrets set JWT_SECRET_KEY=$(openssl rand -hex 32) --app ai-flywheel-api
-#      fly secrets set TEMPORAL_HOST=<your-temporal-cloud-address> --app ai-flywheel-api
+# AI Flywheel — Full Stack Deployment
+#
+# Deploys everything with Docker Compose:
+#   - PostgreSQL 16 + pgvector
+#   - Redis 7
+#   - Temporal + Temporal UI
+#   - API (FastAPI)
+#   - Worker (Temporal activities)
+#   - Frontend (Next.js)
+#
+# Usage:
+#   # Set your OpenAI key
+#   export OPENAI_API_KEY=sk-...
+#
+#   # Deploy everything
+#   ./deploy.sh
+#
+#   # Or deploy to a remote server:
+#   ssh your-server "cd /app && git pull && ./deploy.sh"
+#
+# Requirements:
+#   - Docker & Docker Compose v2
+#   - At least 2GB RAM
 
 set -e
 
-echo "🚀 Deploying AI Flywheel to Fly.io..."
-
-# Deploy backend
+echo "🚀 AI Flywheel — Full Stack Deploy"
 echo ""
-echo "📦 Deploying Backend API..."
-fly deploy --app ai-flywheel-api
 
-# Run migrations
-echo ""
-echo "🗄️  Running database migrations..."
-fly ssh console --app ai-flywheel-api -C "alembic upgrade head"
+# Check requirements
+if ! command -v docker &> /dev/null; then
+    echo "❌ Docker not found. Install: https://docs.docker.com/get-docker/"
+    exit 1
+fi
 
-# Deploy frontend
+if [ -z "$OPENAI_API_KEY" ]; then
+    echo "⚠️  OPENAI_API_KEY not set. LLM features won't work."
+    echo "   Set it with: export OPENAI_API_KEY=sk-..."
+    echo ""
+fi
+
+# Generate JWT secret if not set
+export JWT_SECRET_KEY=${JWT_SECRET_KEY:-$(openssl rand -hex 32)}
+
+echo "📦 Building containers..."
+docker compose build
+
 echo ""
-echo "🎨 Deploying Frontend..."
-cd frontend
-fly deploy --app ai-flywheel-web
-cd ..
+echo "🗄️  Starting infrastructure (Postgres, Redis, Temporal)..."
+docker compose up -d postgres redis temporal temporal-ui
+sleep 10
+
+echo ""
+echo "🔄 Running migrations..."
+docker compose run --rm migrate
+
+echo ""
+echo "🚀 Starting application..."
+docker compose up -d api worker frontend
 
 echo ""
 echo "✅ Deployment complete!"
 echo ""
-echo "   Backend:  https://ai-flywheel-api.fly.dev"
-echo "   Frontend: https://ai-flywheel-web.fly.dev"
+echo "   Frontend:    http://localhost:3000"
+echo "   API:         http://localhost:8000"
+echo "   API Docs:    http://localhost:8000/docs"
+echo "   Temporal UI: http://localhost:8080"
+echo "   Health:      http://localhost:8000/health"
 echo ""
-echo "   Health:   https://ai-flywheel-api.fly.dev/health"
+echo "   Logs:        docker compose logs -f"
+echo "   Stop:        docker compose down"
+echo "   Destroy:     docker compose down -v"

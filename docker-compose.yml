@@ -1,4 +1,6 @@
 services:
+  # --- Infrastructure ---
+
   postgres:
     image: pgvector/pgvector:pg16
     ports:
@@ -47,6 +49,83 @@ services:
       - TEMPORAL_ADDRESS=temporal:7233
     depends_on:
       - temporal
+
+  # --- Application ---
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - DATABASE_URL=postgresql+asyncpg://flywheel:flywheel_dev@postgres:5432/ai_flywheel
+      - DATABASE_URL_SYNC=postgresql://flywheel:flywheel_dev@postgres:5432/ai_flywheel
+      - REDIS_URL=redis://redis:6379/0
+      - TEMPORAL_HOST=temporal:7233
+      - TEMPORAL_NAMESPACE=default
+      - TEMPORAL_TASK_QUEUE=ai-flywheel-main
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-change-me-in-production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["python", "-m", "ai_flywheel.worker"]
+    environment:
+      - ENVIRONMENT=production
+      - DATABASE_URL=postgresql+asyncpg://flywheel:flywheel_dev@postgres:5432/ai_flywheel
+      - DATABASE_URL_SYNC=postgresql://flywheel:flywheel_dev@postgres:5432/ai_flywheel
+      - REDIS_URL=redis://redis:6379/0
+      - TEMPORAL_HOST=temporal:7233
+      - TEMPORAL_NAMESPACE=default
+      - TEMPORAL_TASK_QUEUE=ai-flywheel-main
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - BACKEND_URL=http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # --- Migrations (run once) ---
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://flywheel:flywheel_dev@postgres:5432/ai_flywheel
+      - DATABASE_URL_SYNC=postgresql://flywheel:flywheel_dev@postgres:5432/ai_flywheel
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   postgres_data:
