@@ -61,6 +61,7 @@ paying for.
 | **Cache** | dict / function memo | Upstash Redis | Hot-path dedup or cross-process caching matters at load. |
 | **Slack** | `FakeSlack` \| thin `httpx` webhook POST | Slack Bolt (Socket Mode / Events API) | Two-way Slack (slash commands, interactive approvals) is needed — around **Step 5**. |
 | **Containerization** | `uv run` locally | Docker + Compose → Fly.io | More than one service must run together, or first deploy. |
+| **Agent framework** | `SingleCallAgent` (one structured LLM call) behind an `Agent` Protocol | LangGraph / PydanticAI / hand-rolled `GraphAgent` | A node's `handle()` becomes a stateful loop, tool-calling cycle, or multi-agent process — PostlineAI **Step 7+**. See the "Agent frameworks" section. |
 
 > **Rule:** adding any deferred item early is the exact premature optimization
 > the bottom-up model exists to prevent. Wait for the trigger.
@@ -109,6 +110,84 @@ hold. We're not changing the destination — only deferring the on-ramp.
 
 ---
 
+## Agent frameworks (LangGraph et al.) — deferred behind an `Agent` seam
+
+**Do we need LangGraph / an agent framework now? No.** And adopting one now
+would violate the bottom-up rule, for the same reason as Temporal or Redis: it
+is a heavyweight runtime for a problem we don't have yet.
+
+### What "agentic" means in our model today
+
+Every agentic node in `layer1-nodes.md` is, right now, a **single structured
+LLM call** — input → one prompt → typed (Pydantic) output:
+
+| Node | Today's shape |
+|---|---|
+| `signal-analyzer` | metrics + rubric → LLM → `strong\|weak\|kill` + confidence |
+| `pain-extractor` | transcript → LLM → structured pain points |
+| `market-scanner` | search/SEMrush results → LLM → market map |
+| `voice-profile-builder` | materials → LLM → voice profile |
+
+None of these needs what frameworks like LangGraph exist to provide:
+multi-step **loops with state**, **tool-calling cycles** (call → observe →
+decide → call again), **conditional graphs**, **multi-agent coordination**
+(debate/delegation/supervisor), or **pause/resume across time**. Wrapping a
+graph runtime around `llm_gateway.complete(prompt, schema) -> result` is pure
+overhead.
+
+The substrate already gives us much of what people reach for a framework to
+get: `trace-recorder` provides per-call tracing, cost, and replayability.
+
+### The seam: an `Agent` Protocol behind the node
+
+We *do* introduce the abstraction now — because agentic nodes are a real,
+present need — but not the framework. A node calls an `Agent` it gets from the
+context; the concrete implementation is swappable, exactly like the fake/real
+library seam:
+
+```text
+Node.handle(event, ctx)
+   └── agent = ctx.get_agent("signal-analyzer")   # returns an Agent impl
+       result = agent.run(inputs)                  # structured in → structured out
+```
+
+`Agent` is a Protocol with implementations that grow only with demand:
+
+| Impl | When | What it is |
+|---|---|---|
+| `SingleCallAgent` | **now** | One templated `llm-gateway` call, Pydantic-parsed output. Covers every current agentic node. |
+| `ToolLoopAgent` | when a node needs ReAct | A loop: LLM picks a tool → observe → decide again. Often ~50 hand-rolled lines; may wrap an SDK. |
+| `GraphAgent` | when a node needs a real stateful graph | **This** is where LangGraph / PydanticAI / a hand-rolled graph plugs in — behind the identical `agent.run()` interface. |
+
+The node, the event contract, and the rest of the system never know which
+implementation is behind the Protocol. So choosing a framework later is a
+**reversible, localized** decision — not a foundational bet.
+
+### The trigger that un-defers a framework
+
+Reach for a graph framework when a node's `handle()` stops being "one call" and
+becomes a **loop with state, tools, or multiple cooperating agents**. In
+PostlineAI that realistically first appears at **Step 7+**, if `post-drafter`
+becomes: draft → self-critique → revise → check against voice profile → maybe
+call a research tool → finalize. It also covers the "critical complexity
+pipelines" from `../docs/architecture.md` (e.g. multi-stage knowledge-graph
+construction).
+
+### Framework choice (decide at the trigger, not now)
+
+When a `GraphAgent` is genuinely needed, run a small bake-off rather than
+defaulting to LangGraph:
+
+- **PydanticAI** — fits our Pydantic-everywhere stack; lighter; typed.
+- **LangGraph** — most popular; explicit state graphs; pulls in more LangChain
+  surface area.
+- **Hand-rolled loop** — for a single ReAct node, often the right call: no
+  dependency, full control, already traceable via the substrate.
+
+Picking now would be guessing. The `Agent` seam makes waiting cheap.
+
+---
+
 ## Notes & known inconsistencies in the old docs
 
 - **Celery vs. Temporal:** `../docs/package-structure.md` mentions **Celery**
@@ -129,4 +208,5 @@ hold. We're not changing the destination — only deferring the on-ramp.
 - **`../docs/tech-stack.md`** — full target stack rationale (canonical).
 - **`../docs/infrastructure.md`** — full hosting/production plan (canonical).
 - **`venture-walkthrough.md`** — the steps that trigger each arrival.
-- **`layer1-nodes.md`** — the fake/real Protocol seam this doc extends to infra.
+- **`layer1-nodes.md`** — the fake/real Protocol seam this doc extends to infra
+  and to the `Agent` abstraction.
