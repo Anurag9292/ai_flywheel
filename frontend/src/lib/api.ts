@@ -105,6 +105,13 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ venture_id: ventureId }),
       }),
+    intelligence: (ventureId: string) =>
+      apiFetch<any[]>(`/api/agents/intelligence?venture_id=${ventureId}`),
+    nextAction: (ventureId: string) =>
+      apiFetch<any>(`/api/agents/next-action`, {
+        method: "POST",
+        body: JSON.stringify({ venture_id: ventureId }),
+      }),
   },
   discovery: {
     listProjects: (ventureId: string) =>

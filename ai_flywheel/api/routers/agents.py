@@ -9,6 +9,7 @@ from typing import Any
 from ai_flywheel.core.database import get_session
 from ai_flywheel.core.llm import generate
 from ai_flywheel.core.models import Venture
+from ai_flywheel.modules.agent_runtime.agent_factory.intelligence import VentureIntelligenceStore
 from ai_flywheel.modules.agent_runtime.agent_factory.models import AgentBlueprint
 from ai_flywheel.modules.agent_runtime.agent_factory.schemas import (
     AgentBlueprintCreate,
@@ -22,6 +23,7 @@ from ai_flywheel.modules.product_intelligence.venture_thesis.models import Thesi
 
 router = APIRouter()
 factory = AgentFactory()
+intelligence_store = VentureIntelligenceStore()
 
 
 # --- Schemas for new endpoints ---
@@ -128,6 +130,14 @@ async def suggest_task(request: SuggestTaskRequest):
                 f"{o.name} (ICP: {o.icp}, positioning: {o.positioning})" for o in offers
             )
             context_parts.append(f"Offers: {offer_info}")
+
+    # Venture intelligence context
+    try:
+        intel_summary = await intelligence_store.get_context_summary(venture_id)
+        if intel_summary and intel_summary != "No previous intelligence gathered yet.":
+            context_parts.append(f"Previous Intelligence:\n{intel_summary}")
+    except Exception:
+        pass
 
     context_summary = " | ".join(context_parts) if context_parts else "No venture context available yet."
 
@@ -247,4 +257,88 @@ async def run_agent_network(request: RunNetworkRequest):
         steps=steps,
         total_cost_usd=total_cost,
         total_duration_ms=total_duration,
+    )
+
+
+@router.get("/intelligence")
+async def get_venture_intelligence(venture_id: str, limit: int = 20) -> list[dict]:
+    """Get all stored agent outputs for a venture."""
+    return await intelligence_store.get_outputs(venture_id, limit)
+
+
+class NextActionRequest(BaseModel):
+    venture_id: str
+
+
+class NextActionResponse(BaseModel):
+    recommendation: str
+    context_used: str
+
+
+@router.post("/next-action", response_model=NextActionResponse)
+async def recommend_next_action(request: NextActionRequest):
+    """AI recommends the next action based on venture state."""
+    venture_id = request.venture_id
+
+    # 1. Get intelligence summary
+    intel_summary = await intelligence_store.get_context_summary(venture_id)
+
+    # 2. Get venture context (thesis, offers)
+    context_parts = [f"Intelligence:\n{intel_summary}"]
+
+    async with get_session(venture_id) as session:
+        stmt = select(Thesis).where(
+            Thesis.venture_id == venture_id,
+            Thesis.deleted_at.is_(None),
+        ).limit(5)
+        result = await session.execute(stmt)
+        theses = result.scalars().all()
+        if theses:
+            thesis_info = "; ".join(f"{t.title}: {t.hypothesis}" for t in theses)
+            context_parts.append(f"Theses: {thesis_info}")
+
+    async with get_session(venture_id) as session:
+        stmt = select(Offer).where(
+            Offer.venture_id == venture_id,
+            Offer.deleted_at.is_(None),
+        ).limit(5)
+        result = await session.execute(stmt)
+        offers = result.scalars().all()
+        if offers:
+            offer_info = "; ".join(
+                f"{o.name} (ICP: {o.icp}, positioning: {o.positioning})" for o in offers
+            )
+            context_parts.append(f"Offers: {offer_info}")
+
+    context_used = "\n".join(context_parts)
+
+    # 3. Call LLM for recommendation
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a venture strategy advisor. Based on the current state of the venture "
+                "(intelligence gathered, theses, offers), recommend the single most impactful "
+                "next action the founder should take. Be specific, actionable, and concise. "
+                "Consider what has already been done and what gaps remain."
+            ),
+        },
+        {
+            "role": "user",
+            "content": f"Venture State:\n{context_used}\n\nWhat should the founder do next?",
+        },
+    ]
+
+    response = await generate(
+        messages=messages,
+        model="gpt-4o-mini",
+        temperature=0.7,
+        max_tokens=400,
+        venture_id=venture_id,
+        module_name="next_action_advisor",
+    )
+
+    return NextActionResponse(
+        recommendation=response.content.strip(),
+        context_used=context_used[:500],
     )

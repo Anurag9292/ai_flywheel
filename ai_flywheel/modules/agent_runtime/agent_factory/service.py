@@ -22,6 +22,7 @@ from ai_flywheel.core.events import get_event_bus
 from ai_flywheel.core.llm import generate
 from ai_flywheel.core.traces import get_tracer
 
+from .intelligence import VentureIntelligenceStore
 from .models import AgentBlueprint
 from .schemas import (
     AgentBlueprintCreate,
@@ -30,6 +31,8 @@ from .schemas import (
     AgentExecutionRequest,
     AgentExecutionResult,
 )
+from ai_flywheel.modules.agent_runtime.memory_engine.schemas import MemoryQuery, MemoryStore
+from ai_flywheel.modules.agent_runtime.memory_engine.service import MemoryEngine
 
 logger = structlog.get_logger()
 
@@ -46,6 +49,8 @@ class AgentFactory:
     def __init__(self) -> None:
         self._event_bus = get_event_bus()
         self._tracer = get_tracer()
+        self._intelligence = VentureIntelligenceStore()
+        self._memory = MemoryEngine()
 
     async def create_agent(
         self, venture_id: str, data: AgentBlueprintCreate
@@ -211,6 +216,35 @@ class AgentFactory:
         )
 
         try:
+            # Recall relevant memories before execution
+            try:
+                memories = await self._memory.recall(
+                    venture_id,
+                    MemoryQuery(
+                        agent_id=blueprint.id,
+                        query=request.task[:200],
+                        limit=5,
+                        min_importance=0.3,
+                    ),
+                )
+                if memories:
+                    memory_context = "\n".join(
+                        f"[Memory] {m.content[:200]}" for m in memories
+                    )
+                    request.context = request.context or {}
+                    request.context["memory_context"] = memory_context
+            except Exception as mem_err:
+                logger.warning("memory_recall_failed", error=str(mem_err))
+
+            # Inject venture intelligence context
+            try:
+                intel_context = await self._intelligence.get_context_summary(venture_id)
+                if intel_context and intel_context != "No previous intelligence gathered yet.":
+                    request.context = request.context or {}
+                    request.context["venture_intelligence"] = intel_context
+            except Exception as intel_err:
+                logger.warning("intelligence_context_failed", error=str(intel_err))
+
             # For approval workflows, delegate to Temporal
             if request.require_approval:
                 return await self._execute_with_approval(
@@ -245,6 +279,37 @@ class AgentFactory:
                 )
             else:
                 raise ValueError(f"Unknown agent_type: {blueprint.agent_type}")
+
+            # Store output in venture intelligence
+            if result.output:
+                try:
+                    await self._intelligence.store_output(
+                        venture_id=venture_id,
+                        agent_id=result.agent_id,
+                        agent_name=blueprint.name,
+                        task=request.task,
+                        output=result.output,
+                        cost_usd=result.cost_usd,
+                        trace_id=result.trace_id,
+                    )
+                except Exception as store_err:
+                    logger.warning("intelligence_store_failed", error=str(store_err))
+
+            # Store output as episodic memory
+            if result.output:
+                try:
+                    await self._memory.store(
+                        venture_id,
+                        MemoryStore(
+                            agent_id=blueprint.id,
+                            tier="episodic",
+                            content=f"Task: {request.task[:200]}\nOutput: {result.output[:500]}",
+                            importance=0.6,
+                            metadata={"execution_id": execution_id, "trace_id": trace_id},
+                        ),
+                    )
+                except Exception as mem_store_err:
+                    logger.warning("memory_store_failed", error=str(mem_store_err))
 
             await self._event_bus.publish(
                 event_type="agent.execution.completed",
