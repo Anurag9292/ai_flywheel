@@ -34,6 +34,7 @@ export default function LifecyclePage() {
   const [assumptions, setAssumptions] = useState("");
   const [killSignals, setKillSignals] = useState("");
   const [launching, setLaunching] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
 
   useEffect(() => {
     apiFetch<any[]>("/api/ventures/").then(setVentures).catch(() => {});
@@ -68,6 +69,28 @@ export default function LifecyclePage() {
       }
     } catch {
       setWorkflowStatus(null);
+    }
+  }
+
+  async function handleSuggest() {
+    if (!ventureId) return;
+    setSuggesting(true);
+    try {
+      const venture = ventures.find((v) => v.id === ventureId);
+      const result = await apiFetch<any>("/api/workflows/lifecycle/suggest", {
+        method: "POST",
+        body: JSON.stringify({
+          venture_name: venture?.name || "Venture",
+          domain: venture?.domain || "general",
+        }),
+      });
+      setHypothesis(result.hypothesis || "");
+      setAssumptions((result.assumptions || []).join("\n"));
+      setKillSignals((result.kill_signals || []).join("\n"));
+    } catch (err: any) {
+      alert("Failed to generate suggestions: " + err.message);
+    } finally {
+      setSuggesting(false);
     }
   }
 
@@ -304,29 +327,38 @@ export default function LifecyclePage() {
       {/* Launch Modal */}
       <Modal open={showLaunch} onClose={() => setShowLaunch(false)} title="Launch Venture Lifecycle">
         <div className="space-y-4">
-          <p className="text-sm text-[var(--text-secondary)]">
-            This will run the full validation pipeline: Thesis → Discovery → Market → Offer.
-            Each stage has kill gates that will terminate if signals are detected.
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-[var(--text-secondary)]">
+              Full validation pipeline: Thesis → Discovery → Market → Offer → Blueprint → Agents.
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleSuggest}
+              disabled={suggesting}
+            >
+              {suggesting ? "Generating..." : "Auto-fill with AI"}
+            </Button>
+          </div>
           <Textarea
             label="Hypothesis"
             value={hypothesis}
             onChange={(e) => setHypothesis(e.target.value)}
-            rows={2}
+            rows={3}
             placeholder="We believe [ICP] will pay [price] for [solution] because [pain]..."
           />
           <Textarea
             label="Assumptions (one per line)"
             value={assumptions}
             onChange={(e) => setAssumptions(e.target.value)}
-            rows={3}
+            rows={4}
             placeholder="Target users have this pain&#10;They currently solve it with manual work&#10;They would pay $X/mo for automation"
           />
           <Textarea
             label="Kill Signals (one per line)"
             value={killSignals}
             onChange={(e) => setKillSignals(e.target.value)}
-            rows={2}
+            rows={3}
             placeholder="Less than 3/10 interviews confirm pain&#10;Market size < $10M"
           />
           <div className="flex justify-end gap-3 pt-2">
