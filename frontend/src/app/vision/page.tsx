@@ -247,49 +247,48 @@ export default function VisionMapPage() {
 
   return (
     <div className="h-[calc(100vh-32px)] flex flex-col relative overflow-hidden">
-      {/* ─── Title Area (absolute over canvas) ───────────────────────────── */}
-      <div className="absolute top-4 left-6 z-20 pointer-events-none">
-        <h1 className="text-3xl font-black gradient-text tracking-tight">AI Flywheel</h1>
-        <p className="text-base text-violet-200/90 font-semibold mt-0.5">
-          Personal Venture Operating System
-        </p>
-        <p className="text-xs text-gray-400 mt-2 max-w-[420px] leading-relaxed">
-          Validate what to build. Build with agents. Learn from every launch. Launch the next venture faster.
-        </p>
-        <span className="inline-block mt-2 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-widest text-amber-300/90 bg-amber-900/30 border border-amber-500/30 rounded-full">
-          For the Super Founder
-        </span>
-      </div>
+      {/* ─── Compact Header with Title + Filter Bar ────────────────────── */}
+      <div className="absolute top-0 left-0 right-0 z-30 px-4 py-2 bg-gradient-to-b from-[var(--bg-primary)] via-[var(--bg-primary)]/90 to-transparent pointer-events-none">
+        <div className="flex items-center justify-between pointer-events-auto">
+          {/* Title (compact) */}
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-bold gradient-text">AI Flywheel</h1>
+            <p className="text-[10px] text-[var(--text-muted)] hidden sm:block">
+              Personal Venture Operating System — Validate, build, learn, launch faster.
+            </p>
+          </div>
 
-      {/* ─── Filter Bar ──────────────────────────────────────────────────── */}
-      <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
-        <div className="flex gap-0.5 bg-[rgba(5,5,15,0.85)] backdrop-blur-md rounded-lg p-1 border border-[var(--border-subtle)]">
-          {FILTER_OPTIONS.map((f) => (
+          {/* Filter Bar + Story Control (single row) */}
+          <div className="flex items-center gap-2">
+            <div className="flex gap-0.5 bg-[rgba(5,5,15,0.85)] backdrop-blur-md rounded-lg p-0.5 border border-[var(--border-subtle)]">
+              {FILTER_OPTIONS.map((f) => (
+                <button
+                  key={f.key || "all"}
+                  onClick={() => setFilter(f.key)}
+                  className={`px-2 py-1 text-[9px] font-medium rounded-md transition-all ${
+                    filter === f.key
+                      ? "bg-violet-600/40 text-violet-100 border border-violet-400/40 shadow-[0_0_8px_rgba(139,92,246,0.2)]"
+                      : "text-gray-500 hover:text-gray-300 hover:bg-white/5"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Story Control */}
             <button
-              key={f.key || "all"}
-              onClick={() => setFilter(f.key)}
-              className={`px-2.5 py-1.5 text-[10px] font-medium rounded-md transition-all ${
-                filter === f.key
-                  ? "bg-violet-600/40 text-violet-100 border border-violet-400/40 shadow-[0_0_8px_rgba(139,92,246,0.2)]"
-                  : "text-gray-500 hover:text-gray-300 hover:bg-white/5"
+              onClick={simulating ? stopSimulation : startSimulation}
+              className={`px-3 py-1.5 text-[10px] font-semibold rounded-lg transition-all whitespace-nowrap ${
+                simulating
+                  ? "bg-red-600/25 text-red-200 border border-red-500/40 shadow-[0_0_12px_rgba(239,68,68,0.15)]"
+                  : "bg-emerald-600/25 text-emerald-200 border border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.15)]"
               }`}
             >
-              {f.label}
+              {simulating ? "Stop Story" : "Play Story"}
             </button>
-          ))}
+          </div>
         </div>
-
-        {/* Story Control */}
-        <button
-          onClick={simulating ? stopSimulation : startSimulation}
-          className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${
-            simulating
-              ? "bg-red-600/25 text-red-200 border border-red-500/40 shadow-[0_0_12px_rgba(239,68,68,0.15)]"
-              : "bg-emerald-600/25 text-emerald-200 border border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.15)]"
-          }`}
-        >
-          {simulating ? "Stop Story" : "Play Story"}
-        </button>
       </div>
 
       {/* ─── Story Mode Card (top-right below filters) ───────────────────── */}
@@ -300,7 +299,7 @@ export default function VisionMapPage() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 20 }}
             transition={{ duration: 0.3 }}
-            className="absolute top-[70px] right-4 z-20 w-[320px] p-4 rounded-xl
+            className="absolute top-[48px] right-4 z-20 w-[300px] p-3 rounded-xl
               bg-[rgba(8,8,18,0.95)] backdrop-blur-xl border border-violet-500/30
               shadow-[0_0_40px_rgba(139,92,246,0.12)]"
           >
@@ -318,13 +317,10 @@ export default function VisionMapPage() {
         )}
       </AnimatePresence>
 
-      {/* ─── Spine Label (top center) ────────────────────────────────────── */}
-      <div className="absolute top-[20px] left-1/2 -translate-x-1/2 z-10 pointer-events-none text-center">
-        <p className="text-[10px] text-fuchsia-400/60 font-semibold uppercase tracking-[0.2em]">
+      {/* ─── Spine Label (top center, below header) ──────────────────────── */}
+      <div className="absolute top-[42px] left-1/2 -translate-x-1/2 z-10 pointer-events-none text-center">
+        <p className="text-[9px] text-fuchsia-400/50 font-semibold uppercase tracking-[0.2em]">
           Execution Spine &mdash; System Heartbeat
-        </p>
-        <p className="text-[8px] text-gray-500 mt-0.5">
-          Every action: executable, traceable, measurable, costed, versioned.
         </p>
       </div>
 
@@ -339,7 +335,7 @@ export default function VisionMapPage() {
           minZoom={0.1}
           maxZoom={3}
           proOptions={{ hideAttribution: true }}
-          defaultViewport={{ x: 30, y: 10, zoom: 0.5 }}
+          defaultViewport={{ x: 30, y: -60, zoom: 0.47 }}
         >
           <Controls
             className="!bg-[rgba(8,8,18,0.95)] !border-[var(--border-subtle)] !rounded-lg !shadow-lg

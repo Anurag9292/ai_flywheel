@@ -592,86 +592,86 @@ export const visionEdges: VisionEdgeData[] = [
 // ─── Layout Positions (~2200x1800 canvas) ────────────────────────────────────
 
 export const nodePositions: Record<string, { x: number; y: number }> = {
-  // ═══ Execution Spine (Top — y: 60) ═══
-  spine_event: { x: 180, y: 60 },
-  spine_task: { x: 430, y: 60 },
-  spine_agent: { x: 680, y: 60 },
-  spine_trace: { x: 930, y: 60 },
-  spine_metric: { x: 1180, y: 60 },
-  spine_feedback: { x: 1430, y: 60 },
-  spine_experiment: { x: 1680, y: 60 },
-  spine_pattern: { x: 1930, y: 60 },
+  // ═══ Execution Spine (Top — y: 260) ═══
+  spine_event: { x: 180, y: 260 },
+  spine_task: { x: 430, y: 260 },
+  spine_agent: { x: 680, y: 260 },
+  spine_trace: { x: 930, y: 260 },
+  spine_metric: { x: 1180, y: 260 },
+  spine_feedback: { x: 1430, y: 260 },
+  spine_experiment: { x: 1680, y: 260 },
+  spine_pattern: { x: 1930, y: 260 },
 
   // ═══ Super Founder (left, connected to hero path) ═══
-  super_founder: { x: 50, y: 350 },
+  super_founder: { x: 50, y: 550 },
 
-  // ═══ Main Lifecycle — HERO (gentle arc, y: 350-500) ═══
-  founder_hunch: { x: 250, y: 380 },
-  discover: { x: 450, y: 350 },
-  validate_demand: { x: 680, y: 380 },
-  design: { x: 900, y: 350 },
-  build: { x: 1120, y: 380 },
-  deploy: { x: 1340, y: 350 },
-  learn: { x: 1540, y: 380 },
-  extract: { x: 1740, y: 350 },
-  compound: { x: 1920, y: 380 },
-  next_venture: { x: 2100, y: 350 },
+  // ═══ Main Lifecycle — HERO (gentle arc, y: 550-700) ═══
+  founder_hunch: { x: 250, y: 580 },
+  discover: { x: 450, y: 550 },
+  validate_demand: { x: 680, y: 580 },
+  design: { x: 900, y: 550 },
+  build: { x: 1120, y: 580 },
+  deploy: { x: 1340, y: 550 },
+  learn: { x: 1540, y: 580 },
+  extract: { x: 1740, y: 550 },
+  compound: { x: 1920, y: 580 },
+  next_venture: { x: 2100, y: 550 },
 
   // ═══ Kill Path (below validate_demand) ═══
-  decision_go_kill: { x: 680, y: 520 },
-  kill_early: { x: 680, y: 640 },
+  decision_go_kill: { x: 680, y: 720 },
+  kill_early: { x: 680, y: 840 },
 
-  // ═══ Business Intelligence (Left — y: 650-950, x: 50-450) ═══
-  customer_discovery: { x: 80, y: 680 },
-  hypothesis_testing: { x: 300, y: 680 },
-  market_signals: { x: 80, y: 820 },
-  icp_definition: { x: 300, y: 820 },
-  offer_design: { x: 190, y: 950 },
+  // ═══ Business Intelligence (Left — y: 850-1150, x: 50-450) ═══
+  customer_discovery: { x: 80, y: 880 },
+  hypothesis_testing: { x: 300, y: 880 },
+  market_signals: { x: 80, y: 1020 },
+  icp_definition: { x: 300, y: 1020 },
+  offer_design: { x: 190, y: 1150 },
 
-  // ═══ Technical Execution (Right — y: 650-950, x: 1400-1850) ═══
-  agent_orchestration: { x: 1430, y: 680 },
-  prompt_management: { x: 1670, y: 680 },
-  tool_runtime: { x: 1430, y: 820 },
-  memory_engine: { x: 1670, y: 820 },
-  cost_optimization: { x: 1550, y: 950 },
+  // ═══ Technical Execution (Right — y: 850-1150, x: 1400-1850) ═══
+  agent_orchestration: { x: 1430, y: 880 },
+  prompt_management: { x: 1670, y: 880 },
+  tool_runtime: { x: 1430, y: 1020 },
+  memory_engine: { x: 1670, y: 1020 },
+  cost_optimization: { x: 1550, y: 1150 },
 
   // ═══ Validation Checkpoints (near validate_demand) ═══
-  val_desk: { x: 500, y: 700 },
-  val_conversations: { x: 500, y: 800 },
-  val_landing: { x: 500, y: 900 },
-  val_wizard: { x: 500, y: 1000 },
-  val_mvp: { x: 500, y: 1100 },
+  val_desk: { x: 500, y: 900 },
+  val_conversations: { x: 500, y: 1000 },
+  val_landing: { x: 500, y: 1100 },
+  val_wizard: { x: 500, y: 1200 },
+  val_mvp: { x: 500, y: 1300 },
 
-  // ═══ Flywheel Loop (Bottom Center — circular, y: 1050-1200) ═══
-  fw_venture_runs: { x: 750, y: 1060 },
-  fw_edge_cases: { x: 920, y: 1100 },
-  fw_utils_improve: { x: 1070, y: 1170 },
-  fw_patterns_accumulate: { x: 1070, y: 1060 },
-  fw_agents_sharpen: { x: 920, y: 1200 },
-  fw_benchmarks_grow: { x: 750, y: 1170 },
-  fw_next_faster: { x: 910, y: 1050 },
+  // ═══ Flywheel Loop (Bottom Center — circular, y: 1250-1400) ═══
+  fw_venture_runs: { x: 750, y: 1260 },
+  fw_edge_cases: { x: 920, y: 1300 },
+  fw_utils_improve: { x: 1070, y: 1370 },
+  fw_patterns_accumulate: { x: 1070, y: 1260 },
+  fw_agents_sharpen: { x: 920, y: 1400 },
+  fw_benchmarks_grow: { x: 750, y: 1370 },
+  fw_next_faster: { x: 910, y: 1250 },
 
-  // ═══ Layer 2 — Venture Orchestrators (y: 1350) ═══
-  layer2_v1: { x: 200, y: 1350 },
-  layer2_v3: { x: 500, y: 1350 },
-  layer2_v5: { x: 800, y: 1350 },
-  layer2_future: { x: 1100, y: 1350 },
+  // ═══ Layer 2 — Venture Orchestrators (y: 1550) ═══
+  layer2_v1: { x: 200, y: 1550 },
+  layer2_v3: { x: 500, y: 1550 },
+  layer2_v5: { x: 800, y: 1550 },
+  layer2_future: { x: 1100, y: 1550 },
 
-  // ═══ Layer 1 Foundation (y: 1500) ═══
-  sys_kernel: { x: 50, y: 1500 },
-  sys_agent_runtime: { x: 300, y: 1500 },
-  sys_data: { x: 550, y: 1500 },
-  sys_ml: { x: 780, y: 1500 },
-  sys_product_intel: { x: 1010, y: 1500 },
-  sys_experimentation: { x: 1270, y: 1500 },
-  sys_deployment: { x: 1520, y: 1500 },
-  sys_cross_venture: { x: 1770, y: 1500 },
+  // ═══ Layer 1 Foundation (y: 1700) ═══
+  sys_kernel: { x: 50, y: 1700 },
+  sys_agent_runtime: { x: 300, y: 1700 },
+  sys_data: { x: 550, y: 1700 },
+  sys_ml: { x: 780, y: 1700 },
+  sys_product_intel: { x: 1010, y: 1700 },
+  sys_experimentation: { x: 1270, y: 1700 },
+  sys_deployment: { x: 1520, y: 1700 },
+  sys_cross_venture: { x: 1770, y: 1700 },
 
-  // ═══ Interaction Channels (Bottom-Right — y: 1350, x: 1600-2000) ═══
-  channel_slack: { x: 1620, y: 1350 },
-  channel_web: { x: 1800, y: 1350 },
-  channel_cli: { x: 1980, y: 1350 },
-  channel_router: { x: 1800, y: 1480 },
+  // ═══ Interaction Channels (Bottom-Right — y: 1550, x: 1600-2000) ═══
+  channel_slack: { x: 1620, y: 1550 },
+  channel_web: { x: 1800, y: 1550 },
+  channel_cli: { x: 1980, y: 1550 },
+  channel_router: { x: 1800, y: 1680 },
 };
 
 // ─── Simulation Sequence (10 steps for story mode) ───────────────────────────
