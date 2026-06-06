@@ -1,14 +1,17 @@
 /**
- * AI Flywheel Vision Map — Story-Driven Canvas Data
+ * AI Flywheel Vision Map V2 — Premium Story-Driven Canvas Data
  *
- * Three-layer layout:
- *   Top:    Execution Spine (horizontal heartbeat)
- *   Middle: Main Venture Lifecycle (hero flow, S-curve)
- *   Bottom: Flywheel compounding loop (circular)
- *
- * Supporting clusters: Business Intel (left), Technical (right)
- * Canvas: ~2000×1600 — fits at 0.55 zoom on one screen.
+ * Three-layer layout (~2200x1800 canvas, default zoom 0.5):
+ *   Top (y: 50-80):         Execution Spine — System Heartbeat
+ *   Center (y: 350-500):    Main Venture Lifecycle — HERO path (gentle arc)
+ *   Left (y: 650-950):      Business Intelligence (green/teal)
+ *   Right (y: 650-950):     Technical Execution (blue)
+ *   Bottom-center (y: 1050-1200): Flywheel compounding loop (gold)
+ *   Bottom row (y: 1350-1500):    Layer 1 Foundation + Layer 2 Orchestrators
+ *   Bottom-right (y: 1350):       Interaction Channels
  */
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 export type NodeCategory =
   | "founder_state"
@@ -17,20 +20,22 @@ export type NodeCategory =
   | "technical_execution"
   | "execution_spine"
   | "system"
+  | "architecture_layer"
   | "validation_checkpoint"
   | "decision_point"
   | "feedback_loop"
   | "interaction_channel"
+  | "outcome"
   | "kill_signal"
-  | "outcome";
+  | "flywheel";
 
 export interface VisionNodeData {
   id: string;
   title: string;
   type: NodeCategory;
   description: string;
-  group?: string;
-  storyText?: string; // Displayed in story mode overlay
+  group: string;
+  layer?: string;
 }
 
 export interface VisionEdgeData {
@@ -39,245 +44,678 @@ export interface VisionEdgeData {
   target: string;
   label?: string;
   animated?: boolean;
-  type?: "default" | "feedback" | "spine" | "kill";
+  edgeType: "hero" | "feedback" | "spine" | "kill" | "module" | "foundation" | "flywheel";
 }
 
-// =============================================
-// NODES
-// =============================================
+// ─── Nodes ───────────────────────────────────────────────────────────────────
 
 export const visionNodes: VisionNodeData[] = [
-  // --- Main Lifecycle (Hero Flow — S-curve) ---
-  { id: "founder_hunch", title: "Founder Hunch", type: "founder_state", description: "Gut feeling meets pattern recognition. A possible opportunity sparks.", group: "lifecycle", storyText: "It starts with a hunch — pattern recognition from lived experience." },
-  { id: "discover_opportunity", title: "Discover", type: "lifecycle_stage", description: "Research the market, detect signals, identify customer pain.", group: "lifecycle", storyText: "Signals detected. The opportunity space becomes clear." },
-  { id: "validate_demand", title: "Validate Demand", type: "lifecycle_stage", description: "Customer evidence: interviews, waitlists, conversion data.", group: "lifecycle", storyText: "Validating with real customer evidence. Kill early or proceed." },
-  { id: "design_product", title: "Design", type: "lifecycle_stage", description: "Product experience, AI interaction patterns, feature priority.", group: "lifecycle", storyText: "Designing the product experience and agent architecture." },
-  { id: "build_agents", title: "Build", type: "lifecycle_stage", description: "Configure agents, prompts, tools, memory, workflows.", group: "lifecycle", storyText: "Building agents that execute the product vision." },
-  { id: "deploy_product", title: "Deploy", type: "lifecycle_stage", description: "Ship to real users with monitoring and auto-healing.", group: "lifecycle", storyText: "Live in production. Real users, real feedback." },
-  { id: "learn_metrics", title: "Learn", type: "lifecycle_stage", description: "Capture traces, costs, feedback, performance metrics.", group: "lifecycle", storyText: "Learning from every interaction and metric." },
-  { id: "extract_patterns", title: "Extract", type: "feedback_loop", description: "Winning strategies extracted for cross-venture reuse.", group: "lifecycle", storyText: "Extracting reusable patterns from this venture's data." },
-  { id: "compound_intelligence", title: "Compound", type: "feedback_loop", description: "Platform gets smarter. Shared utils and benchmarks accumulate.", group: "lifecycle", storyText: "Intelligence compounds. The platform evolves." },
-  { id: "next_venture", title: "Next Venture", type: "outcome", description: "Each successive venture launches faster: 5→3→2→1 week.", group: "lifecycle", storyText: "Next venture launches faster. The flywheel accelerates." },
+  // ═══ Super Founder (Golden special node) ═══
+  {
+    id: "super_founder",
+    title: "Super Founder",
+    type: "founder_state",
+    description: "The human operator makes the high-leverage 5% decisions.",
+    group: "lifecycle",
+  },
 
-  // --- Kill Signal ---
-  { id: "kill_early", title: "Kill Early", type: "kill_signal", description: "Evidence contradicts thesis. Kill cheap, save learnings, move on.", group: "lifecycle", storyText: "No signal? Kill early and cheap. Preserve capital." },
+  // ═══ Main Lifecycle — HERO PATH ═══
+  {
+    id: "founder_hunch",
+    title: "Founder Hunch",
+    type: "lifecycle_stage",
+    description: "Gut feeling meets pattern recognition. A pain, signal, or opportunity worth investigating.",
+    group: "lifecycle",
+  },
+  {
+    id: "discover",
+    title: "Discover",
+    type: "lifecycle_stage",
+    description: "Research the market, detect signals, identify customer pain points.",
+    group: "lifecycle",
+  },
+  {
+    id: "validate_demand",
+    title: "Validate Demand",
+    type: "lifecycle_stage",
+    description: "Customer evidence: interviews, waitlists, prototype tests, conversion data.",
+    group: "lifecycle",
+  },
+  {
+    id: "design",
+    title: "Design",
+    type: "lifecycle_stage",
+    description: "Product experience, AI interaction patterns, feature priority, UX flows.",
+    group: "lifecycle",
+  },
+  {
+    id: "build",
+    title: "Build",
+    type: "lifecycle_stage",
+    description: "Configure agent networks: prompts, tools, memory, policies, orchestration.",
+    group: "lifecycle",
+  },
+  {
+    id: "deploy",
+    title: "Deploy",
+    type: "lifecycle_stage",
+    description: "Ship to real users with monitoring, canary releases, and auto-healing.",
+    group: "lifecycle",
+  },
+  {
+    id: "learn",
+    title: "Learn",
+    type: "lifecycle_stage",
+    description: "Capture traces, costs, feedback, performance metrics from live usage.",
+    group: "lifecycle",
+  },
+  {
+    id: "extract",
+    title: "Extract",
+    type: "lifecycle_stage",
+    description: "Winning strategies extracted as reusable patterns for cross-venture use.",
+    group: "lifecycle",
+  },
+  {
+    id: "compound",
+    title: "Compound",
+    type: "lifecycle_stage",
+    description: "Intelligence compounds. Winning patterns become platform infrastructure.",
+    group: "lifecycle",
+  },
+  {
+    id: "next_venture",
+    title: "Next Venture",
+    type: "outcome",
+    description: "Next venture starts with 60-80% of the work already done. 5 weeks becomes 1.",
+    group: "lifecycle",
+  },
 
-  // --- Validated Product (convergence) ---
-  { id: "validated_product", title: "Validated Product", type: "outcome", description: "Business demand + technical feasibility converge into a validated product.", group: "lifecycle", storyText: "Business and technical validation converge." },
+  // ═══ Kill Path ═══
+  {
+    id: "decision_go_kill",
+    title: "Go / Kill?",
+    type: "decision_point",
+    description: "Cheapest evidence first. Is there signal or not?",
+    group: "validation",
+  },
+  {
+    id: "kill_early",
+    title: "Kill Early",
+    type: "kill_signal",
+    description: "Cheapest evidence first. Kill early, kill cheap. Preserve capital and learnings.",
+    group: "validation",
+  },
 
-  // --- Business Intelligence (Left Cluster) ---
-  { id: "customer_discovery", title: "Customer Discovery", type: "business_intelligence", description: "JTBD interviews, pain extraction, persona synthesis.", group: "business" },
-  { id: "hypothesis_validation", title: "Hypothesis Testing", type: "business_intelligence", description: "Structured thesis, evidence ladder, Bayesian confidence.", group: "business" },
-  { id: "market_signals", title: "Market Signals", type: "business_intelligence", description: "Competitor monitoring, trend detection, opportunity scoring.", group: "business" },
-  { id: "icp_definition", title: "ICP Definition", type: "business_intelligence", description: "Behavioral and firmographic customer profiling.", group: "business" },
-  { id: "offer_design", title: "Offer Design", type: "business_intelligence", description: "Positioning, pricing, landing copy, objection rebuttals.", group: "business" },
+  // ═══ Execution Spine (Top — System Heartbeat) ═══
+  {
+    id: "spine_event",
+    title: "Event",
+    type: "execution_spine",
+    description: "Trigger: user action, schedule, external signal, webhook.",
+    group: "spine",
+  },
+  {
+    id: "spine_task",
+    title: "Task",
+    type: "execution_spine",
+    description: "Work unit with inputs, outputs, success criteria, budget.",
+    group: "spine",
+  },
+  {
+    id: "spine_agent",
+    title: "Agent/Tool",
+    type: "execution_spine",
+    description: "LLM call, API hit, computation — policy-gated execution.",
+    group: "spine",
+  },
+  {
+    id: "spine_trace",
+    title: "Trace",
+    type: "execution_spine",
+    description: "Immutable execution history, cost-attributed, version-tagged.",
+    group: "spine",
+  },
+  {
+    id: "spine_metric",
+    title: "Metric",
+    type: "execution_spine",
+    description: "Accuracy, cost, latency, conversion, satisfaction scores.",
+    group: "spine",
+  },
+  {
+    id: "spine_feedback",
+    title: "Feedback",
+    type: "execution_spine",
+    description: "Human or automated judgment, timestamped and attributed.",
+    group: "spine",
+  },
+  {
+    id: "spine_experiment",
+    title: "Experiment",
+    type: "execution_spine",
+    description: "Statistical aggregation, A/B tests, decision-ready reports.",
+    group: "spine",
+  },
+  {
+    id: "spine_pattern",
+    title: "Pattern",
+    type: "execution_spine",
+    description: "Extracted winning strategy, context-tagged, reusable.",
+    group: "spine",
+  },
 
-  // --- Technical Execution (Right Cluster) ---
-  { id: "agent_orchestration", title: "Agent Orchestration", type: "technical_execution", description: "Multi-agent coordination: delegation, debate, consensus.", group: "technical" },
-  { id: "prompt_management", title: "Prompt Management", type: "technical_execution", description: "Version-controlled prompts with A/B testing.", group: "technical" },
-  { id: "tool_runtime", title: "Tool Runtime", type: "technical_execution", description: "Typed tools, API integrations, credential management.", group: "technical" },
-  { id: "memory_engine", title: "Memory Engine", type: "technical_execution", description: "Working, episodic, semantic, procedural memory.", group: "technical" },
-  { id: "cost_optimization", title: "Cost Optimization", type: "technical_execution", description: "Per-token tracking, smart routing, budget alerts.", group: "technical" },
+  // ═══ Business Intelligence (Left Cluster — green/teal) ═══
+  {
+    id: "customer_discovery",
+    title: "Customer Discovery",
+    type: "business_intelligence",
+    description: "JTBD interviews, pain extraction, persona synthesis.",
+    group: "business",
+  },
+  {
+    id: "hypothesis_testing",
+    title: "Hypothesis Testing",
+    type: "business_intelligence",
+    description: "Structured thesis, evidence ladder, Bayesian confidence scoring.",
+    group: "business",
+  },
+  {
+    id: "market_signals",
+    title: "Market Signals",
+    type: "business_intelligence",
+    description: "Competitor monitoring, trend detection, opportunity scoring.",
+    group: "business",
+  },
+  {
+    id: "icp_definition",
+    title: "ICP Definition",
+    type: "business_intelligence",
+    description: "Behavioral and firmographic customer profiling.",
+    group: "business",
+  },
+  {
+    id: "offer_design",
+    title: "Offer Design",
+    type: "business_intelligence",
+    description: "Positioning, pricing, landing copy, objection rebuttals.",
+    group: "business",
+  },
 
-  // --- Execution Spine (Top) ---
-  { id: "spine_event", title: "Event", type: "execution_spine", description: "Trigger: user action, schedule, external signal.", group: "spine" },
-  { id: "spine_task", title: "Task", type: "execution_spine", description: "Work unit with inputs, outputs, success criteria.", group: "spine" },
-  { id: "spine_agent", title: "Agent", type: "execution_spine", description: "LLM call, API hit, computation — policy-gated.", group: "spine" },
-  { id: "spine_trace", title: "Trace", type: "execution_spine", description: "Immutable execution history, cost-attributed.", group: "spine" },
-  { id: "spine_metric", title: "Metric", type: "execution_spine", description: "Accuracy, cost, latency, conversion, satisfaction.", group: "spine" },
-  { id: "spine_feedback", title: "Feedback", type: "execution_spine", description: "Human or automated judgment, timestamped.", group: "spine" },
-  { id: "spine_experiment", title: "Experiment", type: "execution_spine", description: "Statistical aggregation, decision-ready.", group: "spine" },
-  { id: "spine_pattern", title: "Pattern", type: "execution_spine", description: "Extracted winning strategy, context-tagged.", group: "spine" },
+  // ═══ Technical Execution (Right Cluster — blue) ═══
+  {
+    id: "agent_orchestration",
+    title: "Agent Orchestration",
+    type: "technical_execution",
+    description: "Multi-agent coordination: delegation, debate, consensus protocols.",
+    group: "technical",
+  },
+  {
+    id: "prompt_management",
+    title: "Prompt Management",
+    type: "technical_execution",
+    description: "Version-controlled prompts with A/B testing and rollback.",
+    group: "technical",
+  },
+  {
+    id: "tool_runtime",
+    title: "Tool Runtime",
+    type: "technical_execution",
+    description: "Typed tools, API integrations, credential management, sandboxing.",
+    group: "technical",
+  },
+  {
+    id: "memory_engine",
+    title: "Memory Engine",
+    type: "technical_execution",
+    description: "Working, episodic, semantic, procedural memory layers.",
+    group: "technical",
+  },
+  {
+    id: "cost_optimization",
+    title: "Cost Optimization",
+    type: "technical_execution",
+    description: "Per-token tracking, smart routing, budget alerts, model switching.",
+    group: "technical",
+  },
 
-  // --- Validation Ladder (near validate_demand) ---
-  { id: "val_desk", title: "Desk Research", type: "validation_checkpoint", description: "Free. What does the market look like?", group: "validation" },
-  { id: "val_conversations", title: "Conversations", type: "validation_checkpoint", description: "Time only. Do people have this pain?", group: "validation" },
-  { id: "val_landing", title: "Landing Page", type: "validation_checkpoint", description: "Hours. Will people sign up?", group: "validation" },
-  { id: "val_wizard", title: "Wizard-of-Oz", type: "validation_checkpoint", description: "Days. Can you deliver value manually?", group: "validation" },
-  { id: "val_mvp", title: "MVP", type: "validation_checkpoint", description: "Weeks. Real agents, real users.", group: "validation" },
+  // ═══ Flywheel Loop (Bottom Center — gold/amber) ═══
+  {
+    id: "fw_venture_runs",
+    title: "Venture Runs",
+    type: "flywheel",
+    description: "Each venture generates real-world execution data.",
+    group: "flywheel",
+  },
+  {
+    id: "fw_edge_cases",
+    title: "Edge Cases Found",
+    type: "flywheel",
+    description: "Production reveals edge cases no simulation can predict.",
+    group: "flywheel",
+  },
+  {
+    id: "fw_utils_improve",
+    title: "Utils Improve",
+    type: "flywheel",
+    description: "Shared utilities hardened by real usage patterns.",
+    group: "flywheel",
+  },
+  {
+    id: "fw_patterns_accumulate",
+    title: "Patterns Accumulate",
+    type: "flywheel",
+    description: "Winning strategies extracted and catalogued.",
+    group: "flywheel",
+  },
+  {
+    id: "fw_agents_sharpen",
+    title: "Agents Sharpen",
+    type: "flywheel",
+    description: "Agent prompts, tools, and policies refined from data.",
+    group: "flywheel",
+  },
+  {
+    id: "fw_benchmarks_grow",
+    title: "Benchmarks Grow",
+    type: "flywheel",
+    description: "Evaluation suites expand with each venture's test cases.",
+    group: "flywheel",
+  },
+  {
+    id: "fw_next_faster",
+    title: "Next Venture Faster",
+    type: "flywheel",
+    description: "Platform improvements compound into launch velocity.",
+    group: "flywheel",
+  },
 
-  // --- Flywheel Loop (Bottom Center) ---
-  { id: "flywheel_data", title: "More Data", type: "feedback_loop", description: "Each user generates training signal.", group: "flywheel" },
-  { id: "flywheel_better", title: "Better Models", type: "feedback_loop", description: "Models improve with accumulated data.", group: "flywheel" },
-  { id: "flywheel_value", title: "More Value", type: "feedback_loop", description: "Better outputs attract more users.", group: "flywheel" },
-  { id: "flywheel_users", title: "More Users", type: "feedback_loop", description: "Growth compounds — network effects.", group: "flywheel" },
+  // ═══ Validation Checkpoints ═══
+  {
+    id: "val_desk",
+    title: "Desk Research",
+    type: "validation_checkpoint",
+    description: "Free. What does the market look like?",
+    group: "validation",
+  },
+  {
+    id: "val_conversations",
+    title: "Conversations",
+    type: "validation_checkpoint",
+    description: "Time only. Do people have this pain?",
+    group: "validation",
+  },
+  {
+    id: "val_landing",
+    title: "Landing Page",
+    type: "validation_checkpoint",
+    description: "Hours. Will people sign up?",
+    group: "validation",
+  },
+  {
+    id: "val_wizard",
+    title: "Wizard-of-Oz",
+    type: "validation_checkpoint",
+    description: "Days. Can you deliver value manually?",
+    group: "validation",
+  },
+  {
+    id: "val_mvp",
+    title: "MVP",
+    type: "validation_checkpoint",
+    description: "Weeks. Real agents, real users, real metrics.",
+    group: "validation",
+  },
 
-  // --- Systems (Compact Row at Bottom) ---
-  { id: "sys_kernel", title: "Core Kernel", type: "system", description: "Config, identity, events, task queues, tracing.", group: "systems" },
-  { id: "sys_agent_runtime", title: "Agent Runtime", type: "system", description: "LLM routing, prompts, orchestration, tools, memory.", group: "systems" },
-  { id: "sys_data", title: "Data & Knowledge", type: "system", description: "Ingestion, embeddings, knowledge graphs.", group: "systems" },
-  { id: "sys_ml", title: "ML & Eval", type: "system", description: "Features, training, evaluation, simulation.", group: "systems" },
-  { id: "sys_product_intel", title: "Product Intel", type: "system", description: "Market signals, discovery, thesis, offers.", group: "systems" },
-  { id: "sys_experimentation", title: "Experimentation", type: "system", description: "A/B testing, metrics, cost optimization.", group: "systems" },
-  { id: "sys_deployment", title: "Deployment", type: "system", description: "Canary releases, monitoring, incident response.", group: "systems" },
-  { id: "sys_cross_venture", title: "Cross-Venture", type: "system", description: "Pattern library, meta-learning, velocity tracking.", group: "systems" },
+  // ═══ Layer 1 Foundation (8 system pills) ═══
+  {
+    id: "sys_kernel",
+    title: "Core Kernel",
+    type: "system",
+    description: "Config, identity, events, task queues, tracing infrastructure.",
+    group: "systems",
+    layer: "foundation",
+  },
+  {
+    id: "sys_agent_runtime",
+    title: "LLM & Agent Runtime",
+    type: "system",
+    description: "LLM routing, prompts, orchestration, tools, memory management.",
+    group: "systems",
+    layer: "foundation",
+  },
+  {
+    id: "sys_data",
+    title: "Data & Knowledge",
+    type: "system",
+    description: "Ingestion, embeddings, knowledge graphs, vector stores.",
+    group: "systems",
+    layer: "foundation",
+  },
+  {
+    id: "sys_ml",
+    title: "ML & Evaluation",
+    type: "system",
+    description: "Features, training, evaluation, simulation, benchmarks.",
+    group: "systems",
+    layer: "foundation",
+  },
+  {
+    id: "sys_product_intel",
+    title: "Product & Market Intel",
+    type: "system",
+    description: "Market signals, discovery, thesis validation, offer design.",
+    group: "systems",
+    layer: "foundation",
+  },
+  {
+    id: "sys_experimentation",
+    title: "Experimentation",
+    type: "system",
+    description: "A/B testing, metrics, cost optimization, statistical analysis.",
+    group: "systems",
+    layer: "foundation",
+  },
+  {
+    id: "sys_deployment",
+    title: "Deployment",
+    type: "system",
+    description: "Canary releases, monitoring, incident response, auto-healing.",
+    group: "systems",
+    layer: "foundation",
+  },
+  {
+    id: "sys_cross_venture",
+    title: "Cross-Venture Learning",
+    type: "system",
+    description: "Pattern library, meta-learning, velocity tracking, knowledge transfer.",
+    group: "systems",
+    layer: "foundation",
+  },
+
+  // ═══ Layer 2 — Venture Orchestrators ═══
+  {
+    id: "layer2_v1",
+    title: "Venture 1 (0% reuse)",
+    type: "architecture_layer",
+    description: "First venture: everything built from scratch. Maximum learning.",
+    group: "architecture",
+    layer: "orchestrator",
+  },
+  {
+    id: "layer2_v3",
+    title: "Venture 3 (~60%)",
+    type: "architecture_layer",
+    description: "Third venture: 60% reuse from platform patterns and agents.",
+    group: "architecture",
+    layer: "orchestrator",
+  },
+  {
+    id: "layer2_v5",
+    title: "Venture 5 (~80%)",
+    type: "architecture_layer",
+    description: "Fifth venture: 80% reuse. Launch in days, not weeks.",
+    group: "architecture",
+    layer: "orchestrator",
+  },
+  {
+    id: "layer2_future",
+    title: "Future N",
+    type: "architecture_layer",
+    description: "Convergence: near-instant venture scaffolding from accumulated intelligence.",
+    group: "architecture",
+    layer: "orchestrator",
+  },
+
+  // ═══ Interaction Channels (Bottom-Right) ═══
+  {
+    id: "channel_slack",
+    title: "Slack",
+    type: "interaction_channel",
+    description: "Conversational interface for founder commands and agent updates.",
+    group: "channels",
+  },
+  {
+    id: "channel_web",
+    title: "Web Dashboard",
+    type: "interaction_channel",
+    description: "Visual control center for metrics, agents, and venture state.",
+    group: "channels",
+  },
+  {
+    id: "channel_cli",
+    title: "CLI",
+    type: "interaction_channel",
+    description: "Developer-first interface for power users and automation.",
+    group: "channels",
+  },
+  {
+    id: "channel_router",
+    title: "Router",
+    type: "interaction_channel",
+    description: "Intelligent routing: maps intents to the right agent or workflow.",
+    group: "channels",
+  },
 ];
 
-// =============================================
-// EDGES
-// =============================================
+// ─── Edges ───────────────────────────────────────────────────────────────────
 
 export const visionEdges: VisionEdgeData[] = [
-  // Main lifecycle flow (hero path)
-  { id: "e-hunch-discover", source: "founder_hunch", target: "discover_opportunity", label: "explore" },
-  { id: "e-discover-validate", source: "discover_opportunity", target: "validate_demand", label: "evidence" },
-  { id: "e-validate-design", source: "validate_demand", target: "design_product", label: "go" },
-  { id: "e-design-build", source: "design_product", target: "build_agents", label: "spec" },
-  { id: "e-build-deploy", source: "build_agents", target: "deploy_product", label: "ship" },
-  { id: "e-deploy-learn", source: "deploy_product", target: "learn_metrics", label: "live" },
-  { id: "e-learn-extract", source: "learn_metrics", target: "extract_patterns", label: "data" },
-  { id: "e-extract-compound", source: "extract_patterns", target: "compound_intelligence", label: "patterns" },
-  { id: "e-compound-next", source: "compound_intelligence", target: "next_venture", label: "faster" },
+  // ═══ HERO PATH — Main Lifecycle ═══
+  { id: "e-sf-hunch", source: "super_founder", target: "founder_hunch", edgeType: "hero", label: "initiates" },
+  { id: "e-hunch-discover", source: "founder_hunch", target: "discover", edgeType: "hero" },
+  { id: "e-discover-validate", source: "discover", target: "validate_demand", edgeType: "hero", label: "evidence" },
+  { id: "e-validate-design", source: "validate_demand", target: "design", edgeType: "hero", label: "go" },
+  { id: "e-design-build", source: "design", target: "build", edgeType: "hero", label: "spec" },
+  { id: "e-build-deploy", source: "build", target: "deploy", edgeType: "hero", label: "ship" },
+  { id: "e-deploy-learn", source: "deploy", target: "learn", edgeType: "hero", label: "live" },
+  { id: "e-learn-extract", source: "learn", target: "extract", edgeType: "hero", label: "data" },
+  { id: "e-extract-compound", source: "extract", target: "compound", edgeType: "hero", label: "patterns" },
+  { id: "e-compound-next", source: "compound", target: "next_venture", edgeType: "hero", label: "faster" },
 
-  // Kill signal from validate
-  { id: "e-validate-kill", source: "validate_demand", target: "kill_early", type: "kill", label: "no signal" },
+  // ═══ Feedback loops (gold dashed, animated) ═══
+  { id: "e-fb-learn-validate", source: "learn", target: "validate_demand", edgeType: "feedback", animated: true },
+  { id: "e-fb-extract-discover", source: "extract", target: "discover", edgeType: "feedback", animated: true },
+  { id: "e-fb-compound-build", source: "compound", target: "build", edgeType: "feedback", animated: true },
+  { id: "e-fb-next-hunch", source: "next_venture", target: "founder_hunch", edgeType: "feedback", animated: true },
 
-  // Validated product convergence
-  { id: "e-design-validated", source: "design_product", target: "validated_product" },
-  { id: "e-build-validated", source: "build_agents", target: "validated_product" },
+  // ═══ Super Founder connections ═══
+  { id: "e-sf-validate", source: "super_founder", target: "validate_demand", edgeType: "module" },
+  { id: "e-sf-kill", source: "super_founder", target: "kill_early", edgeType: "module" },
+  { id: "e-sf-next", source: "super_founder", target: "next_venture", edgeType: "module" },
 
-  // Flywheel feedback loops
-  { id: "e-feedback-next-hunch", source: "next_venture", target: "founder_hunch", type: "feedback", animated: true },
-  { id: "e-feedback-learn-validate", source: "learn_metrics", target: "validate_demand", type: "feedback", animated: true },
-  { id: "e-feedback-compound-build", source: "compound_intelligence", target: "build_agents", type: "feedback", animated: true },
+  // ═══ Kill Path ═══
+  { id: "e-validate-decision", source: "validate_demand", target: "decision_go_kill", edgeType: "kill", label: "assess" },
+  { id: "e-decision-kill", source: "decision_go_kill", target: "kill_early", edgeType: "kill", label: "no signal" },
 
-  // Execution spine chain
-  { id: "e-spine-1", source: "spine_event", target: "spine_task", type: "spine" },
-  { id: "e-spine-2", source: "spine_task", target: "spine_agent", type: "spine" },
-  { id: "e-spine-3", source: "spine_agent", target: "spine_trace", type: "spine" },
-  { id: "e-spine-4", source: "spine_trace", target: "spine_metric", type: "spine" },
-  { id: "e-spine-5", source: "spine_metric", target: "spine_feedback", type: "spine" },
-  { id: "e-spine-6", source: "spine_feedback", target: "spine_experiment", type: "spine" },
-  { id: "e-spine-7", source: "spine_experiment", target: "spine_pattern", type: "spine" },
-  { id: "e-spine-loop", source: "spine_pattern", target: "spine_event", type: "feedback", animated: true },
+  // ═══ Execution Spine chain ═══
+  { id: "e-spine-1", source: "spine_event", target: "spine_task", edgeType: "spine" },
+  { id: "e-spine-2", source: "spine_task", target: "spine_agent", edgeType: "spine" },
+  { id: "e-spine-3", source: "spine_agent", target: "spine_trace", edgeType: "spine" },
+  { id: "e-spine-4", source: "spine_trace", target: "spine_metric", edgeType: "spine" },
+  { id: "e-spine-5", source: "spine_metric", target: "spine_feedback", edgeType: "spine" },
+  { id: "e-spine-6", source: "spine_feedback", target: "spine_experiment", edgeType: "spine" },
+  { id: "e-spine-7", source: "spine_experiment", target: "spine_pattern", edgeType: "spine" },
+  { id: "e-spine-loop", source: "spine_pattern", target: "spine_event", edgeType: "feedback", animated: true },
 
-  // Business intel connections to lifecycle
-  { id: "e-biz-discover", source: "customer_discovery", target: "discover_opportunity" },
-  { id: "e-biz-validate", source: "hypothesis_validation", target: "validate_demand" },
-  { id: "e-biz-market", source: "market_signals", target: "discover_opportunity" },
-  { id: "e-biz-icp", source: "icp_definition", target: "validate_demand" },
-  { id: "e-biz-offer", source: "offer_design", target: "design_product" },
+  // ═══ Spine → Lifecycle connections ═══
+  { id: "e-spine-build", source: "build", target: "spine_agent", edgeType: "module" },
+  { id: "e-spine-deploy", source: "deploy", target: "spine_trace", edgeType: "module" },
+  { id: "e-spine-learn", source: "learn", target: "spine_metric", edgeType: "module" },
+  { id: "e-spine-extract", source: "extract", target: "spine_pattern", edgeType: "module" },
 
-  // Technical connections to lifecycle
-  { id: "e-tech-build1", source: "agent_orchestration", target: "build_agents" },
-  { id: "e-tech-build2", source: "prompt_management", target: "build_agents" },
-  { id: "e-tech-build3", source: "tool_runtime", target: "deploy_product" },
-  { id: "e-tech-build4", source: "memory_engine", target: "build_agents" },
-  { id: "e-tech-cost", source: "cost_optimization", target: "learn_metrics" },
+  // ═══ Business Intelligence → Lifecycle ═══
+  { id: "e-biz-discover1", source: "customer_discovery", target: "discover", edgeType: "module" },
+  { id: "e-biz-discover2", source: "market_signals", target: "discover", edgeType: "module" },
+  { id: "e-biz-validate1", source: "hypothesis_testing", target: "validate_demand", edgeType: "module" },
+  { id: "e-biz-validate2", source: "icp_definition", target: "validate_demand", edgeType: "module" },
+  { id: "e-biz-design", source: "offer_design", target: "design", edgeType: "module" },
 
-  // Validation ladder
-  { id: "e-val-1", source: "val_desk", target: "val_conversations" },
-  { id: "e-val-2", source: "val_conversations", target: "val_landing" },
-  { id: "e-val-3", source: "val_landing", target: "val_wizard" },
-  { id: "e-val-4", source: "val_wizard", target: "val_mvp" },
-  { id: "e-val-to-lifecycle", source: "val_mvp", target: "validate_demand" },
+  // ═══ Technical Execution → Lifecycle ═══
+  { id: "e-tech-build1", source: "agent_orchestration", target: "build", edgeType: "module" },
+  { id: "e-tech-build2", source: "prompt_management", target: "build", edgeType: "module" },
+  { id: "e-tech-build3", source: "memory_engine", target: "build", edgeType: "module" },
+  { id: "e-tech-deploy", source: "tool_runtime", target: "deploy", edgeType: "module" },
+  { id: "e-tech-learn", source: "cost_optimization", target: "learn", edgeType: "module" },
 
-  // Flywheel loop
-  { id: "e-fly-1", source: "flywheel_data", target: "flywheel_better", type: "feedback", animated: true },
-  { id: "e-fly-2", source: "flywheel_better", target: "flywheel_value", type: "feedback", animated: true },
-  { id: "e-fly-3", source: "flywheel_value", target: "flywheel_users", type: "feedback", animated: true },
-  { id: "e-fly-4", source: "flywheel_users", target: "flywheel_data", type: "feedback", animated: true },
+  // ═══ Validation ladder ═══
+  { id: "e-val-1", source: "val_desk", target: "val_conversations", edgeType: "module" },
+  { id: "e-val-2", source: "val_conversations", target: "val_landing", edgeType: "module" },
+  { id: "e-val-3", source: "val_landing", target: "val_wizard", edgeType: "module" },
+  { id: "e-val-4", source: "val_wizard", target: "val_mvp", edgeType: "module" },
+  { id: "e-val-to-lifecycle", source: "val_mvp", target: "validate_demand", edgeType: "module" },
+
+  // ═══ Flywheel loop (gold, animated) ═══
+  { id: "e-fw-1", source: "fw_venture_runs", target: "fw_edge_cases", edgeType: "flywheel", animated: true },
+  { id: "e-fw-2", source: "fw_edge_cases", target: "fw_utils_improve", edgeType: "flywheel", animated: true },
+  { id: "e-fw-3", source: "fw_utils_improve", target: "fw_patterns_accumulate", edgeType: "flywheel", animated: true },
+  { id: "e-fw-4", source: "fw_patterns_accumulate", target: "fw_agents_sharpen", edgeType: "flywheel", animated: true },
+  { id: "e-fw-5", source: "fw_agents_sharpen", target: "fw_benchmarks_grow", edgeType: "flywheel", animated: true },
+  { id: "e-fw-6", source: "fw_benchmarks_grow", target: "fw_next_faster", edgeType: "flywheel", animated: true },
+  { id: "e-fw-7", source: "fw_next_faster", target: "fw_venture_runs", edgeType: "flywheel", animated: true },
+
+  // ═══ Foundation connections (subtle) ═══
+  { id: "e-found-1", source: "sys_agent_runtime", target: "agent_orchestration", edgeType: "foundation" },
+  { id: "e-found-2", source: "sys_product_intel", target: "market_signals", edgeType: "foundation" },
+  { id: "e-found-3", source: "sys_data", target: "memory_engine", edgeType: "foundation" },
+  { id: "e-found-4", source: "sys_ml", target: "cost_optimization", edgeType: "foundation" },
+  { id: "e-found-5", source: "sys_experimentation", target: "hypothesis_testing", edgeType: "foundation" },
+  { id: "e-found-6", source: "sys_cross_venture", target: "compound", edgeType: "foundation" },
+
+  // ═══ Interaction Channels ═══
+  { id: "e-ch-slack", source: "channel_slack", target: "channel_router", edgeType: "module" },
+  { id: "e-ch-web", source: "channel_web", target: "channel_router", edgeType: "module" },
+  { id: "e-ch-cli", source: "channel_cli", target: "channel_router", edgeType: "module" },
+  { id: "e-ch-router-spine", source: "channel_router", target: "spine_event", edgeType: "module" },
 ];
 
-// =============================================
-// LAYOUT POSITIONS — 2000×1600 canvas
-// =============================================
+// ─── Layout Positions (~2200x1800 canvas) ────────────────────────────────────
 
 export const nodePositions: Record<string, { x: number; y: number }> = {
-  // === Execution Spine (Top — y:60) ===
-  spine_event: { x: 200, y: 60 },
+  // ═══ Execution Spine (Top — y: 60) ═══
+  spine_event: { x: 180, y: 60 },
   spine_task: { x: 430, y: 60 },
-  spine_agent: { x: 660, y: 60 },
-  spine_trace: { x: 890, y: 60 },
-  spine_metric: { x: 1120, y: 60 },
-  spine_feedback: { x: 1350, y: 60 },
-  spine_experiment: { x: 1580, y: 60 },
-  spine_pattern: { x: 1810, y: 60 },
+  spine_agent: { x: 680, y: 60 },
+  spine_trace: { x: 930, y: 60 },
+  spine_metric: { x: 1180, y: 60 },
+  spine_feedback: { x: 1430, y: 60 },
+  spine_experiment: { x: 1680, y: 60 },
+  spine_pattern: { x: 1930, y: 60 },
 
-  // === Main Lifecycle — Hero S-curve (y: 380-480) ===
-  founder_hunch: { x: 100, y: 450 },
-  discover_opportunity: { x: 300, y: 400 },
-  validate_demand: { x: 520, y: 450 },
-  design_product: { x: 740, y: 400 },
-  build_agents: { x: 960, y: 450 },
-  deploy_product: { x: 1180, y: 400 },
-  learn_metrics: { x: 1400, y: 450 },
-  extract_patterns: { x: 1600, y: 400 },
-  compound_intelligence: { x: 1780, y: 450 },
-  next_venture: { x: 1950, y: 400 },
+  // ═══ Super Founder (left, connected to hero path) ═══
+  super_founder: { x: 50, y: 350 },
 
-  // Kill signal (near validate)
-  kill_early: { x: 520, y: 580 },
+  // ═══ Main Lifecycle — HERO (gentle arc, y: 350-500) ═══
+  founder_hunch: { x: 250, y: 380 },
+  discover: { x: 450, y: 350 },
+  validate_demand: { x: 680, y: 380 },
+  design: { x: 900, y: 350 },
+  build: { x: 1120, y: 380 },
+  deploy: { x: 1340, y: 350 },
+  learn: { x: 1540, y: 380 },
+  extract: { x: 1740, y: 350 },
+  compound: { x: 1920, y: 380 },
+  next_venture: { x: 2100, y: 350 },
 
-  // Validated product (between design and build)
-  validated_product: { x: 850, y: 560 },
+  // ═══ Kill Path (below validate_demand) ═══
+  decision_go_kill: { x: 680, y: 520 },
+  kill_early: { x: 680, y: 640 },
 
-  // === Business Intelligence (Left Cluster — x:50-400, y:700-1000) ===
-  customer_discovery: { x: 80, y: 720 },
-  hypothesis_validation: { x: 300, y: 720 },
-  market_signals: { x: 80, y: 850 },
-  icp_definition: { x: 300, y: 850 },
-  offer_design: { x: 190, y: 970 },
+  // ═══ Business Intelligence (Left — y: 650-950, x: 50-450) ═══
+  customer_discovery: { x: 80, y: 680 },
+  hypothesis_testing: { x: 300, y: 680 },
+  market_signals: { x: 80, y: 820 },
+  icp_definition: { x: 300, y: 820 },
+  offer_design: { x: 190, y: 950 },
 
-  // === Technical Execution (Right Cluster — x:1200-1700, y:700-1000) ===
-  agent_orchestration: { x: 1250, y: 720 },
-  prompt_management: { x: 1470, y: 720 },
-  tool_runtime: { x: 1250, y: 850 },
-  memory_engine: { x: 1470, y: 850 },
-  cost_optimization: { x: 1360, y: 970 },
+  // ═══ Technical Execution (Right — y: 650-950, x: 1400-1850) ═══
+  agent_orchestration: { x: 1430, y: 680 },
+  prompt_management: { x: 1670, y: 680 },
+  tool_runtime: { x: 1430, y: 820 },
+  memory_engine: { x: 1670, y: 820 },
+  cost_optimization: { x: 1550, y: 950 },
 
-  // === Validation Ladder (near validate_demand — left side) ===
-  val_desk: { x: 420, y: 700 },
-  val_conversations: { x: 420, y: 790 },
-  val_landing: { x: 420, y: 880 },
-  val_wizard: { x: 420, y: 970 },
-  val_mvp: { x: 420, y: 1060 },
+  // ═══ Validation Checkpoints (near validate_demand) ═══
+  val_desk: { x: 500, y: 700 },
+  val_conversations: { x: 500, y: 800 },
+  val_landing: { x: 500, y: 900 },
+  val_wizard: { x: 500, y: 1000 },
+  val_mvp: { x: 500, y: 1100 },
 
-  // === Flywheel Loop (Bottom Center — y:1100-1300) ===
-  flywheel_data: { x: 820, y: 1130 },
-  flywheel_better: { x: 1020, y: 1200 },
-  flywheel_value: { x: 1020, y: 1100 },
-  flywheel_users: { x: 820, y: 1200 },
+  // ═══ Flywheel Loop (Bottom Center — circular, y: 1050-1200) ═══
+  fw_venture_runs: { x: 750, y: 1060 },
+  fw_edge_cases: { x: 920, y: 1100 },
+  fw_utils_improve: { x: 1070, y: 1170 },
+  fw_patterns_accumulate: { x: 1070, y: 1060 },
+  fw_agents_sharpen: { x: 920, y: 1200 },
+  fw_benchmarks_grow: { x: 750, y: 1170 },
+  fw_next_faster: { x: 910, y: 1050 },
 
-  // === Systems (Compact Row — y:1400) ===
-  sys_kernel: { x: 100, y: 1400 },
-  sys_agent_runtime: { x: 340, y: 1400 },
-  sys_data: { x: 580, y: 1400 },
-  sys_ml: { x: 820, y: 1400 },
-  sys_product_intel: { x: 1060, y: 1400 },
-  sys_experimentation: { x: 1300, y: 1400 },
-  sys_deployment: { x: 1540, y: 1400 },
-  sys_cross_venture: { x: 1780, y: 1400 },
+  // ═══ Layer 2 — Venture Orchestrators (y: 1350) ═══
+  layer2_v1: { x: 200, y: 1350 },
+  layer2_v3: { x: 500, y: 1350 },
+  layer2_v5: { x: 800, y: 1350 },
+  layer2_future: { x: 1100, y: 1350 },
+
+  // ═══ Layer 1 Foundation (y: 1500) ═══
+  sys_kernel: { x: 50, y: 1500 },
+  sys_agent_runtime: { x: 300, y: 1500 },
+  sys_data: { x: 550, y: 1500 },
+  sys_ml: { x: 780, y: 1500 },
+  sys_product_intel: { x: 1010, y: 1500 },
+  sys_experimentation: { x: 1270, y: 1500 },
+  sys_deployment: { x: 1520, y: 1500 },
+  sys_cross_venture: { x: 1770, y: 1500 },
+
+  // ═══ Interaction Channels (Bottom-Right — y: 1350, x: 1600-2000) ═══
+  channel_slack: { x: 1620, y: 1350 },
+  channel_web: { x: 1800, y: 1350 },
+  channel_cli: { x: 1980, y: 1350 },
+  channel_router: { x: 1800, y: 1480 },
 };
 
-// =============================================
-// SIMULATION SEQUENCE — tells the 10-second story
-// =============================================
+// ─── Simulation Sequence (10 steps for story mode) ───────────────────────────
 
-export const simulationSequence = [
+export const simulationSequence: string[] = [
   "founder_hunch",
-  "discover_opportunity",
+  "discover",
   "validate_demand",
-  "design_product",
-  "build_agents",
-  "deploy_product",
-  "learn_metrics",
-  "extract_patterns",
-  "compound_intelligence",
+  "design",
+  "build",
+  "deploy",
+  "learn",
+  "extract",
+  "compound",
   "next_venture",
-  "founder_hunch", // loop restarts
 ];
 
-// Story mode captions per step
-export const storyModeText: Record<string, string> = {
-  founder_hunch: "Step 1: A hunch emerges — pattern recognition from lived experience.",
-  discover_opportunity: "Step 2: Exploring the opportunity space with market signals.",
-  validate_demand: "Step 3: Validating demand with customer evidence...",
-  design_product: "Step 4: Designing the product experience and agent architecture.",
-  build_agents: "Step 5: Building intelligent agents that execute the vision.",
-  deploy_product: "Step 6: Shipping to real users with auto-healing reliability.",
-  learn_metrics: "Step 7: Learning from every trace, metric, and feedback signal.",
-  extract_patterns: "Step 8: Extracting reusable patterns for future ventures.",
-  compound_intelligence: "Step 9: Intelligence compounds — the platform evolves.",
-  next_venture: "Step 10: Next venture launches faster. The flywheel accelerates.",
+// ─── Story Text — step descriptions for the story card ───────────────────────
+
+export const storyText: Record<string, string> = {
+  founder_hunch: "The founder has a hunch \u2014 a pain, signal, or opportunity worth investigating.",
+  discover: "Exploring the opportunity space. Market signals, competitor gaps, customer pain.",
+  validate_demand: "Validating demand with customer evidence. Interviews, waitlists, prototype tests.",
+  design: "Designing the product experience: UX flows, agent architecture, feature priority.",
+  build: "Configuring agent networks: prompts, tools, memory, policies, orchestration.",
+  deploy: "Shipping to real users with monitoring, canary releases, and auto-healing.",
+  learn: "Learning from every trace, metric, and feedback signal. What worked? What didn't?",
+  extract: "Extracting reusable patterns. Winning strategies become shared infrastructure.",
+  compound: "Intelligence compounds. Winning patterns become platform infrastructure.",
+  next_venture: "Next venture starts with 60-80% of the work already done.",
 };
+
+// ─── Filter Definitions ──────────────────────────────────────────────────────
+
+export const FILTER_OPTIONS = [
+  { key: null, label: "All" },
+  { key: "lifecycle", label: "Lifecycle" },
+  { key: "founder_state", label: "Founder" },
+  { key: "business", label: "Business Intel" },
+  { key: "technical", label: "Technical" },
+  { key: "spine", label: "Spine" },
+  { key: "flywheel", label: "Flywheel" },
+  { key: "validation", label: "Validation" },
+  { key: "systems", label: "Systems" },
+  { key: "architecture", label: "Architecture" },
+  { key: "channels", label: "Channels" },
+] as const;

@@ -20,89 +20,127 @@ import {
   visionEdges,
   nodePositions,
   simulationSequence,
-  storyModeText,
+  storyText,
+  FILTER_OPTIONS,
   type VisionNodeData,
   type NodeCategory,
 } from "@/components/vision/vision-data";
 
-// ─── Build React Flow nodes from data ────────────────────────────────────────
+// ─── Edge Styling ────────────────────────────────────────────────────────────
 
-function buildNodes(activeId: string | null, highlightGroup: string | null): Node[] {
-  return visionNodes.map((n) => ({
-    id: n.id,
-    type: "visionNode",
-    position: nodePositions[n.id] || { x: 0, y: 0 },
-    data: {
-      title: n.title,
-      type: n.type,
-      description: n.description,
-      group: n.group,
-      isActive: n.id === activeId,
-      isHighlighted: highlightGroup
-        ? n.group === highlightGroup || n.type === highlightGroup
-        : undefined,
-    },
-  }));
+function getEdgeStyle(edgeType: string, isOnPath: boolean) {
+  switch (edgeType) {
+    case "hero":
+      return {
+        stroke: isOnPath ? "rgba(167, 139, 250, 1)" : "rgba(139, 92, 246, 0.7)",
+        strokeWidth: isOnPath ? 3.5 : 3,
+      };
+    case "feedback":
+      return {
+        stroke: isOnPath ? "rgba(251, 191, 36, 0.9)" : "rgba(234, 179, 8, 0.5)",
+        strokeWidth: isOnPath ? 2.5 : 1.8,
+        strokeDasharray: "8 5",
+      };
+    case "kill":
+      return {
+        stroke: "rgba(239, 68, 68, 0.7)",
+        strokeWidth: 1.8,
+        strokeDasharray: "5 4",
+      };
+    case "spine":
+      return {
+        stroke: isOnPath ? "rgba(232, 121, 249, 0.9)" : "rgba(217, 70, 239, 0.5)",
+        strokeWidth: isOnPath ? 2.5 : 2,
+      };
+    case "flywheel":
+      return {
+        stroke: isOnPath ? "rgba(251, 191, 36, 0.9)" : "rgba(234, 179, 8, 0.55)",
+        strokeWidth: isOnPath ? 2.2 : 1.8,
+        strokeDasharray: "6 4",
+      };
+    case "foundation":
+      return {
+        stroke: "rgba(99, 102, 241, 0.2)",
+        strokeWidth: 1,
+        strokeDasharray: "3 3",
+      };
+    case "module":
+    default:
+      return {
+        stroke: isOnPath ? "rgba(139, 92, 246, 0.5)" : "rgba(139, 92, 246, 0.15)",
+        strokeWidth: isOnPath ? 1.5 : 1,
+      };
+  }
 }
 
-// ─── Edge styling ────────────────────────────────────────────────────────────
+// ─── Build Nodes ─────────────────────────────────────────────────────────────
 
-function getEdgeStyle(type?: string, isOnPath?: boolean) {
-  if (type === "kill") {
+function buildNodes(activeId: string | null, filter: string | null): Node[] {
+  return visionNodes.map((n) => {
+    const matchesFilter =
+      !filter ||
+      n.group === filter ||
+      n.type === filter;
+
     return {
-      stroke: "rgba(239, 68, 68, 0.7)",
-      strokeWidth: 2,
-      strokeDasharray: "4 4",
+      id: n.id,
+      type: "visionNode",
+      position: nodePositions[n.id] || { x: 0, y: 0 },
+      data: {
+        id: n.id,
+        title: n.title,
+        type: n.type,
+        description: n.description,
+        group: n.group,
+        isActive: n.id === activeId,
+        isDimmed: filter ? !matchesFilter : false,
+      },
     };
-  }
-  if (type === "feedback") {
-    return {
-      stroke: isOnPath ? "rgba(234, 179, 8, 0.8)" : "rgba(234, 179, 8, 0.35)",
-      strokeWidth: isOnPath ? 2.5 : 1.5,
-      strokeDasharray: "6 4",
-    };
-  }
-  if (type === "spine") {
-    return {
-      stroke: isOnPath ? "rgba(217, 70, 239, 0.8)" : "rgba(217, 70, 239, 0.4)",
-      strokeWidth: isOnPath ? 3 : 2,
-    };
-  }
-  // Default (lifecycle & connections)
-  return {
-    stroke: isOnPath ? "rgba(139, 92, 246, 0.9)" : "rgba(139, 92, 246, 0.25)",
-    strokeWidth: isOnPath ? 3 : 1.5,
-  };
+  });
 }
+
+// ─── Build Edges ─────────────────────────────────────────────────────────────
 
 function buildEdges(activeId: string | null): Edge[] {
   return visionEdges.map((e) => {
     const isOnPath = e.source === activeId || e.target === activeId;
-    const style = getEdgeStyle(e.type, isOnPath);
+    const style = getEdgeStyle(e.edgeType, isOnPath);
     return {
       id: e.id,
       source: e.source,
       target: e.target,
       label: e.label,
-      animated: e.animated || isOnPath,
+      animated: e.animated || (isOnPath && e.edgeType === "hero"),
       style,
-      labelStyle: { fill: "rgba(200,200,220,0.6)", fontSize: 9, fontWeight: 500 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: style.stroke },
+      labelStyle: {
+        fill: "rgba(200, 200, 220, 0.55)",
+        fontSize: 9,
+        fontWeight: 500,
+      },
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: style.stroke,
+        width: 14,
+        height: 14,
+      },
     };
   });
 }
 
-// ─── Filter groups ───────────────────────────────────────────────────────────
+// ─── Legend Items ─────────────────────────────────────────────────────────────
 
-const FILTERS = [
-  { key: null, label: "All" },
-  { key: "lifecycle", label: "Lifecycle" },
-  { key: "business", label: "Business Intel" },
-  { key: "technical", label: "Technical" },
-  { key: "spine", label: "Spine" },
-  { key: "flywheel", label: "Flywheel" },
-  { key: "validation", label: "Validation" },
-  { key: "systems", label: "Systems" },
+const LEGEND_ITEMS = [
+  { color: "bg-violet-400", label: "Lifecycle (Hero)" },
+  { color: "bg-amber-400", label: "Founder / Outcome" },
+  { color: "bg-emerald-400", label: "Business Intel" },
+  { color: "bg-blue-400", label: "Technical" },
+  { color: "bg-fuchsia-400", label: "Execution Spine" },
+  { color: "bg-yellow-400", label: "Flywheel / Feedback" },
+  { color: "bg-red-400", label: "Kill Signal" },
+  { color: "bg-cyan-400", label: "Validation" },
+  { color: "bg-indigo-400", label: "Systems" },
+  { color: "bg-purple-400", label: "Architecture" },
+  { color: "bg-teal-400", label: "Channels" },
 ];
 
 // ─── Main Page Component ─────────────────────────────────────────────────────
@@ -110,19 +148,21 @@ const FILTERS = [
 export default function VisionMapPage() {
   const [activeNode, setActiveNode] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<VisionNodeData | null>(null);
-  const [highlightGroup, setHighlightGroup] = useState<string | null>(null);
+  const [filter, setFilter] = useState<string | null>(null);
   const [simulating, setSimulating] = useState(false);
-  const [storyText, setStoryText] = useState<string | null>(null);
+  const [storyStep, setStoryStep] = useState<number>(0);
+  const [currentStoryText, setCurrentStoryText] = useState<string | null>(null);
+  const [legendOpen, setLegendOpen] = useState(false);
   const simRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const simIndex = useRef(0);
 
   const nodeTypes = useMemo(() => ({ visionNode: VisionNode }), []);
-  const nodes = useMemo(() => buildNodes(activeNode, highlightGroup), [activeNode, highlightGroup]);
+  const nodes = useMemo(() => buildNodes(activeNode, filter), [activeNode, filter]);
   const edges = useMemo(() => buildEdges(activeNode), [activeNode]);
 
-  // ─── Simulation ──────────────────────────────────────────────────────────
+  // ─── Simulation (Story Mode) ──────────────────────────────────────────────
 
-  function startSimulation() {
+  const startSimulation = useCallback(() => {
     setSimulating(true);
     setSelectedNode(null);
     simIndex.current = 0;
@@ -130,103 +170,163 @@ export default function VisionMapPage() {
     const step = () => {
       const nodeId = simulationSequence[simIndex.current];
       setActiveNode(nodeId);
-      setStoryText(storyModeText[nodeId] || null);
+      setStoryStep(simIndex.current + 1);
+      setCurrentStoryText(storyText[nodeId] || null);
       simIndex.current = (simIndex.current + 1) % simulationSequence.length;
     };
 
-    step(); // immediate first step
-    simRef.current = setInterval(step, 1000); // 1s per step = ~10s full cycle
-  }
+    step();
+    simRef.current = setInterval(step, 1200);
+  }, []);
 
-  function stopSimulation() {
+  const stopSimulation = useCallback(() => {
     setSimulating(false);
-    setStoryText(null);
+    setCurrentStoryText(null);
+    setStoryStep(0);
     if (simRef.current) clearInterval(simRef.current);
     setActiveNode(null);
-  }
+  }, []);
 
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (simRef.current) clearInterval(simRef.current);
     };
   }, []);
 
-  // Auto-start simulation on mount for dramatic effect
+  // Auto-start story on mount
   useEffect(() => {
     const timer = setTimeout(() => {
       startSimulation();
-    }, 800);
+    }, 600);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startSimulation]);
+
+  // ─── Node Click Handler ───────────────────────────────────────────────────
+
+  const handleNodeClick = useCallback(
+    (_: React.MouseEvent, node: Node) => {
+      if (simulating) stopSimulation();
+      const data = visionNodes.find((n) => n.id === node.id);
+      setSelectedNode(data || null);
+      setActiveNode(node.id);
+      setCurrentStoryText(data ? storyText[data.id] || data.description : null);
+    },
+    [simulating, stopSimulation]
+  );
+
+  const handlePaneClick = useCallback(() => {
+    if (simulating) return;
+    setSelectedNode(null);
+    setActiveNode(null);
+    setCurrentStoryText(null);
+  }, [simulating]);
+
+  // ─── MiniMap node color ───────────────────────────────────────────────────
+
+  const minimapNodeColor = useCallback((n: Node) => {
+    const type = (n.data as Record<string, unknown>)?.type as NodeCategory | undefined;
+    const colors: Partial<Record<NodeCategory, string>> = {
+      founder_state: "#fbbf24",
+      lifecycle_stage: "#8b5cf6",
+      business_intelligence: "#10b981",
+      technical_execution: "#3b82f6",
+      execution_spine: "#d946ef",
+      system: "#6366f1",
+      architecture_layer: "#9333ea",
+      outcome: "#f59e0b",
+      feedback_loop: "#eab308",
+      kill_signal: "#ef4444",
+      validation_checkpoint: "#06b6d4",
+      decision_point: "#f59e0b",
+      flywheel: "#eab308",
+      interaction_channel: "#14b8a6",
+    };
+    return colors[type as NodeCategory] || "#4b5563";
   }, []);
 
-  function handleNodeClick(_: any, node: Node) {
-    if (simulating) stopSimulation();
-    const data = visionNodes.find((n) => n.id === node.id);
-    setSelectedNode(data || null);
-    setActiveNode(node.id);
-    setStoryText(data?.storyText || null);
-  }
-
   return (
-    <div className="h-[calc(100vh-32px)] flex flex-col relative">
-      {/* ─── Header ──────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-6 py-3 z-10 relative">
-        <div>
-          <h1 className="text-2xl font-bold gradient-text">AI Flywheel Vision Map</h1>
-          <p className="text-sm text-amber-300/80 font-medium mt-0.5 tracking-wide">
-            From hunch to revenue. Every cycle faster.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          {/* Filter Buttons */}
-          <div className="flex gap-1 bg-[rgba(0,0,0,0.4)] rounded-lg p-1.5 border border-[var(--border-subtle)]">
-            {FILTERS.map((f) => (
-              <button
-                key={f.key || "all"}
-                onClick={() => setHighlightGroup(f.key)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                  highlightGroup === f.key
-                    ? "bg-violet-600/40 text-violet-100 border border-violet-400/40 shadow-[0_0_10px_rgba(139,92,246,0.2)]"
-                    : "text-gray-400 hover:text-gray-200 hover:bg-white/5"
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-          {/* Simulation Control */}
-          <button
-            onClick={simulating ? stopSimulation : startSimulation}
-            className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
-              simulating
-                ? "bg-red-600/30 text-red-200 border border-red-500/40 shadow-[0_0_15px_rgba(239,68,68,0.2)]"
-                : "bg-emerald-600/30 text-emerald-200 border border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
-            }`}
-          >
-            {simulating ? "Stop Story" : "Play Story"}
-          </button>
-        </div>
+    <div className="h-[calc(100vh-32px)] flex flex-col relative overflow-hidden">
+      {/* ─── Title Area (absolute over canvas) ───────────────────────────── */}
+      <div className="absolute top-4 left-6 z-20 pointer-events-none">
+        <h1 className="text-3xl font-black gradient-text tracking-tight">AI Flywheel</h1>
+        <p className="text-base text-violet-200/90 font-semibold mt-0.5">
+          Personal Venture Operating System
+        </p>
+        <p className="text-xs text-gray-400 mt-2 max-w-[420px] leading-relaxed">
+          Validate what to build. Build with agents. Learn from every launch. Launch the next venture faster.
+        </p>
+        <span className="inline-block mt-2 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-widest text-amber-300/90 bg-amber-900/30 border border-amber-500/30 rounded-full">
+          For the Super Founder
+        </span>
       </div>
 
-      {/* ─── Story Mode Overlay ──────────────────────────────────────────── */}
+      {/* ─── Filter Bar ──────────────────────────────────────────────────── */}
+      <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+        <div className="flex gap-0.5 bg-[rgba(5,5,15,0.85)] backdrop-blur-md rounded-lg p-1 border border-[var(--border-subtle)]">
+          {FILTER_OPTIONS.map((f) => (
+            <button
+              key={f.key || "all"}
+              onClick={() => setFilter(f.key)}
+              className={`px-2.5 py-1.5 text-[10px] font-medium rounded-md transition-all ${
+                filter === f.key
+                  ? "bg-violet-600/40 text-violet-100 border border-violet-400/40 shadow-[0_0_8px_rgba(139,92,246,0.2)]"
+                  : "text-gray-500 hover:text-gray-300 hover:bg-white/5"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Story Control */}
+        <button
+          onClick={simulating ? stopSimulation : startSimulation}
+          className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${
+            simulating
+              ? "bg-red-600/25 text-red-200 border border-red-500/40 shadow-[0_0_12px_rgba(239,68,68,0.15)]"
+              : "bg-emerald-600/25 text-emerald-200 border border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.15)]"
+          }`}
+        >
+          {simulating ? "Stop Story" : "Play Story"}
+        </button>
+      </div>
+
+      {/* ─── Story Mode Card (top-right below filters) ───────────────────── */}
       <AnimatePresence>
-        {storyText && (
+        {currentStoryText && simulating && (
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
             transition={{ duration: 0.3 }}
-            className="absolute top-[72px] left-1/2 -translate-x-1/2 z-20 px-6 py-3 rounded-xl
-              bg-[rgba(10,10,20,0.9)] backdrop-blur-xl border border-violet-500/30
-              shadow-[0_0_30px_rgba(139,92,246,0.15)]"
+            className="absolute top-[70px] right-4 z-20 w-[320px] p-4 rounded-xl
+              bg-[rgba(8,8,18,0.95)] backdrop-blur-xl border border-violet-500/30
+              shadow-[0_0_40px_rgba(139,92,246,0.12)]"
           >
-            <p className="text-sm text-violet-100 font-medium text-center whitespace-nowrap">
-              {storyText}
-            </p>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-violet-300 bg-violet-900/50 rounded">
+                Step {storyStep} / {simulationSequence.length}
+              </span>
+              <span className="text-[10px] text-violet-300/70 font-medium">
+                {simulationSequence[storyStep - 1] &&
+                  visionNodes.find((n) => n.id === simulationSequence[storyStep - 1])?.title}
+              </span>
+            </div>
+            <p className="text-sm text-gray-200 leading-relaxed">{currentStoryText}</p>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ─── Spine Label (top center) ────────────────────────────────────── */}
+      <div className="absolute top-[20px] left-1/2 -translate-x-1/2 z-10 pointer-events-none text-center">
+        <p className="text-[10px] text-fuchsia-400/60 font-semibold uppercase tracking-[0.2em]">
+          Execution Spine &mdash; System Heartbeat
+        </p>
+        <p className="text-[8px] text-gray-500 mt-0.5">
+          Every action: executable, traceable, measurable, costed, versioned.
+        </p>
+      </div>
 
       {/* ─── Canvas ──────────────────────────────────────────────────────── */}
       <div className="flex-1 relative">
@@ -235,71 +335,57 @@ export default function VisionMapPage() {
           edges={edges}
           nodeTypes={nodeTypes}
           onNodeClick={handleNodeClick}
-          onPaneClick={() => {
-            if (simulating) return;
-            setSelectedNode(null);
-            setActiveNode(null);
-            setStoryText(null);
-          }}
-          minZoom={0.15}
-          maxZoom={2.5}
+          onPaneClick={handlePaneClick}
+          minZoom={0.1}
+          maxZoom={3}
           proOptions={{ hideAttribution: true }}
-          defaultViewport={{ x: 50, y: 20, zoom: 0.55 }}
+          defaultViewport={{ x: 30, y: 10, zoom: 0.5 }}
         >
           <Controls
-            className="!bg-[rgba(10,10,20,0.9)] !border-[var(--border-subtle)] !rounded-lg
+            className="!bg-[rgba(8,8,18,0.95)] !border-[var(--border-subtle)] !rounded-lg !shadow-lg
               [&>button]:!bg-transparent [&>button]:!border-[var(--border-subtle)]
-              [&>button]:!text-gray-400 [&>button:hover]:!bg-violet-600/10"
+              [&>button]:!text-gray-400 [&>button:hover]:!bg-violet-600/10 [&>button:hover]:!text-gray-200"
+            position="bottom-left"
           />
           <MiniMap
-            className="!bg-[rgba(10,10,20,0.9)] !border-[var(--border-subtle)] !rounded-lg"
-            nodeColor={(n) => {
-              const type = (n.data as any)?.type as NodeCategory;
-              const colors: Partial<Record<NodeCategory, string>> = {
-                founder_state: "#f59e0b",
-                lifecycle_stage: "#8b5cf6",
-                business_intelligence: "#10b981",
-                technical_execution: "#3b82f6",
-                execution_spine: "#d946ef",
-                system: "#6366f1",
-                outcome: "#fbbf24",
-                feedback_loop: "#eab308",
-                kill_signal: "#ef4444",
-                validation_checkpoint: "#06b6d4",
-              };
-              return colors[type] || "#4b5563";
-            }}
-            maskColor="rgba(0,0,0,0.75)"
+            className="!bg-[rgba(8,8,18,0.95)] !border-[var(--border-subtle)] !rounded-lg"
+            nodeColor={minimapNodeColor}
+            maskColor="rgba(0,0,0,0.8)"
+            position="bottom-right"
           />
           <Background
             variant={BackgroundVariant.Dots}
-            gap={40}
+            gap={50}
             size={1}
-            color="rgba(139, 92, 246, 0.06)"
+            color="rgba(139, 92, 246, 0.04)"
           />
         </ReactFlow>
 
-        {/* ─── Detail Panel (Right Side — Wider) ──────────────────────────── */}
+        {/* ─── Detail Panel (Right Side Slide-in) ─────────────────────────── */}
         <AnimatePresence>
           {selectedNode && (
             <motion.div
               initial={{ x: 400, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: 400, opacity: 0 }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="absolute top-4 right-4 w-[360px] bg-[rgba(10,10,18,0.95)] backdrop-blur-xl
-                border border-[var(--border-subtle)] rounded-xl p-6 shadow-2xl z-20"
+              transition={{ type: "spring", damping: 28, stiffness: 220 }}
+              className="absolute top-4 right-4 w-[340px] bg-[rgba(8,8,16,0.97)] backdrop-blur-xl
+                border border-[var(--border-subtle)] rounded-xl p-5 shadow-2xl z-30"
             >
-              <div className="flex items-start justify-between mb-4">
+              <div className="flex items-start justify-between mb-3">
                 <div>
-                  <p className="text-[10px] text-violet-400 uppercase tracking-widest font-semibold">
+                  <p className="text-[9px] text-violet-400/80 uppercase tracking-[0.15em] font-semibold">
                     {selectedNode.type.replace(/_/g, " ")}
                   </p>
                   <h3 className="text-lg font-bold text-white mt-1">{selectedNode.title}</h3>
                 </div>
                 <button
-                  onClick={() => { setSelectedNode(null); setActiveNode(null); setStoryText(null); }}
-                  className="text-gray-500 hover:text-gray-200 text-xl leading-none p-1"
+                  onClick={() => {
+                    setSelectedNode(null);
+                    setActiveNode(null);
+                    setCurrentStoryText(null);
+                  }}
+                  className="text-gray-500 hover:text-gray-200 text-lg leading-none p-1 transition-colors"
                 >
                   &times;
                 </button>
@@ -307,41 +393,83 @@ export default function VisionMapPage() {
               <p className="text-sm text-gray-300 leading-relaxed">{selectedNode.description}</p>
               {selectedNode.group && (
                 <div className="mt-4 pt-3 border-t border-[var(--border-subtle)]">
-                  <p className="text-xs text-gray-500">
-                    Group: <span className="text-gray-300 font-medium">{selectedNode.group}</span>
+                  <p className="text-[10px] text-gray-500">
+                    Group:{" "}
+                    <span className="text-gray-300 font-medium capitalize">{selectedNode.group}</span>
                   </p>
+                  {selectedNode.layer && (
+                    <p className="text-[10px] text-gray-500 mt-1">
+                      Layer:{" "}
+                      <span className="text-gray-300 font-medium capitalize">{selectedNode.layer}</span>
+                    </p>
+                  )}
                 </div>
               )}
-              {selectedNode.storyText && (
-                <div className="mt-3 p-3 rounded-lg bg-violet-950/30 border border-violet-500/20">
-                  <p className="text-xs text-violet-200 italic">{selectedNode.storyText}</p>
+              {storyText[selectedNode.id] && (
+                <div className="mt-3 p-3 rounded-lg bg-violet-950/30 border border-violet-500/15">
+                  <p className="text-[10px] text-violet-300/80 italic leading-relaxed">
+                    {storyText[selectedNode.id]}
+                  </p>
                 </div>
               )}
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* ─── Legend ─────────────────────────────────────────────────────── */}
-        <div className="absolute bottom-4 left-4 bg-[rgba(10,10,18,0.9)] backdrop-blur-sm
-          border border-[var(--border-subtle)] rounded-lg p-3 z-20">
-          <p className="text-[9px] text-gray-500 uppercase tracking-wider mb-2 font-semibold">Legend</p>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-            {[
-              { color: "bg-violet-500", label: "Lifecycle" },
-              { color: "bg-amber-500", label: "Founder / Outcome" },
-              { color: "bg-emerald-500", label: "Business Intel" },
-              { color: "bg-blue-500", label: "Technical" },
-              { color: "bg-fuchsia-500", label: "Execution Spine" },
-              { color: "bg-yellow-500", label: "Feedback Loop" },
-              { color: "bg-red-500", label: "Kill Signal" },
-              { color: "bg-cyan-500", label: "Validation" },
-            ].map((l) => (
-              <div key={l.label} className="flex items-center gap-1.5">
-                <div className={`w-2.5 h-2.5 rounded-full ${l.color}`} />
-                <span className="text-[10px] text-gray-400">{l.label}</span>
-              </div>
-            ))}
-          </div>
+        {/* ─── Collapsible Legend (Bottom-Left) ───────────────────────────── */}
+        <div className="absolute bottom-14 left-4 z-20">
+          <button
+            onClick={() => setLegendOpen(!legendOpen)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold text-gray-400
+              bg-[rgba(8,8,18,0.9)] backdrop-blur-sm border border-[var(--border-subtle)]
+              rounded-lg hover:text-gray-200 hover:border-violet-500/30 transition-all"
+          >
+            Legend {legendOpen ? "\u25BE" : "\u25B8"}
+          </button>
+          <AnimatePresence>
+            {legendOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: 8, height: 0 }}
+                animate={{ opacity: 1, y: 0, height: "auto" }}
+                exit={{ opacity: 0, y: 8, height: 0 }}
+                transition={{ duration: 0.2 }}
+                className="mt-1.5 bg-[rgba(8,8,18,0.95)] backdrop-blur-md border border-[var(--border-subtle)]
+                  rounded-lg p-3 overflow-hidden"
+              >
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                  {LEGEND_ITEMS.map((l) => (
+                    <div key={l.label} className="flex items-center gap-1.5">
+                      <div className={`w-2 h-2 rounded-full ${l.color}`} />
+                      <span className="text-[9px] text-gray-400">{l.label}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2 pt-2 border-t border-[var(--border-subtle)]">
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-[3px] bg-violet-400 rounded" />
+                      <span className="text-[8px] text-gray-500">Hero path (thick)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-[2px] bg-amber-400 rounded" style={{ borderTop: "2px dashed" }} />
+                      <span className="text-[8px] text-gray-500">Feedback (dashed gold)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-[2px] bg-red-400 rounded" style={{ borderTop: "2px dashed" }} />
+                      <span className="text-[8px] text-gray-500">Kill (dashed red)</span>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* ─── Flywheel Caption (near flywheel loop) ─────────────────────── */}
+        <div className="absolute bottom-[340px] left-1/2 -translate-x-1/2 z-10 pointer-events-none text-center">
+          <p className="text-[9px] text-amber-400/50 font-medium italic">
+            Each venture improves the platform. Each improvement makes the next venture faster.
+          </p>
         </div>
       </div>
     </div>
