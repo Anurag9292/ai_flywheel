@@ -40,6 +40,10 @@ class LifecycleRequest(BaseModel):
     kill_signals: list[str] = []
 
 
+# In-memory workflow registry (per venture) — in production use DB
+_active_workflows: dict[str, str] = {}  # venture_id -> workflow_id
+
+
 @router.post("/lifecycle", response_model=WorkflowStartedResponse)
 async def start_lifecycle_workflow(request: LifecycleRequest) -> WorkflowStartedResponse:
     """Start the venture lifecycle orchestration workflow.
@@ -61,7 +65,25 @@ async def start_lifecycle_workflow(request: LifecycleRequest) -> WorkflowStarted
         workflow_id=workflow_id,
     )
 
+    _active_workflows[request.venture_id] = workflow_id
     return WorkflowStartedResponse(workflow_id=workflow_id)
+
+
+@router.get("/venture/{venture_id}/active")
+async def get_active_workflow(venture_id: str) -> dict:
+    """Get the active lifecycle workflow for a venture."""
+    workflow_id = _active_workflows.get(venture_id)
+    if not workflow_id:
+        return {"venture_id": venture_id, "workflow_id": None, "status": "none"}
+
+    client = await get_temporal_client()
+    handle = client.get_workflow_handle(workflow_id)
+
+    try:
+        status = await handle.query(VentureLifecycleWorkflow.get_status)
+        return {"venture_id": venture_id, "workflow_id": workflow_id, **status}
+    except Exception as e:
+        return {"venture_id": venture_id, "workflow_id": workflow_id, "status": "completed_or_error", "error": str(e)}
 
 
 @router.post("/{workflow_id}/approve")

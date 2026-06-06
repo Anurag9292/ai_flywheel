@@ -197,6 +197,8 @@ class VentureLifecycleWorkflow:
         self._approved = False
         self._killed = False
         self._kill_reason = ""
+        self._stage_results: dict[str, dict] = {}
+        self._stages = ["thesis", "discovery", "market", "offer"]
 
     @workflow.signal
     async def approve_stage(self) -> None:
@@ -211,11 +213,14 @@ class VentureLifecycleWorkflow:
 
     @workflow.query
     def get_status(self) -> dict:
-        """Query current lifecycle status."""
+        """Query current lifecycle status with full stage details."""
         return {
             "stage": self._current_stage,
             "killed": self._killed,
             "kill_reason": self._kill_reason,
+            "stages": self._stages,
+            "stage_results": self._stage_results,
+            "completed_stages": list(self._stage_results.keys()),
         }
 
     @workflow.run
@@ -233,6 +238,7 @@ class VentureLifecycleWorkflow:
             retry_policy=retry,
         )
         results["thesis"] = thesis_result
+        self._stage_results["thesis"] = thesis_result
 
         if self._killed:
             return {"status": "killed", "stage": "thesis", "reason": self._kill_reason, "results": results}
@@ -246,6 +252,7 @@ class VentureLifecycleWorkflow:
             retry_policy=retry,
         )
         results["discovery"] = discovery_result
+        self._stage_results["discovery"] = discovery_result
 
         # Kill gate check
         kill_check = await workflow.execute_activity(
@@ -266,6 +273,7 @@ class VentureLifecycleWorkflow:
             retry_policy=retry,
         )
         results["market"] = market_result
+        self._stage_results["market"] = market_result
 
         # If market score is low, wait for approval
         if market_result["status"] == "needs_review":
@@ -284,6 +292,7 @@ class VentureLifecycleWorkflow:
             retry_policy=retry,
         )
         results["offer"] = offer_result
+        self._stage_results["offer"] = offer_result
 
         # Final stage
         self._current_stage = "completed"
