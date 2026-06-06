@@ -38,6 +38,8 @@ from ai_flywheel.workflows.venture_lifecycle import (
     discovery_stage_activity,
     market_stage_activity,
     offer_stage_activity,
+    blueprint_stage_activity,
+    agent_setup_activity,
     kill_check_activity,
 )
 
@@ -62,6 +64,8 @@ ALL_ACTIVITIES = [
     discovery_stage_activity,
     market_stage_activity,
     offer_stage_activity,
+    blueprint_stage_activity,
+    agent_setup_activity,
     kill_check_activity,
 ]
 

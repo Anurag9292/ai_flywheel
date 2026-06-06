@@ -13,10 +13,12 @@ interface StageInfo {
 }
 
 const STAGES: StageInfo[] = [
-  { name: "thesis", label: "Thesis", description: "Formulate hypothesis & assumptions", icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" },
-  { name: "discovery", label: "Discovery", description: "Customer interviews & pain extraction", icon: "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" },
-  { name: "market", label: "Market", description: "Signal analysis & opportunity scoring", icon: "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" },
-  { name: "offer", label: "Offer", description: "ICP, positioning, pricing design", icon: "M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7" },
+  { name: "thesis", label: "Thesis", description: "Formulate hypothesis", icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" },
+  { name: "discovery", label: "Discovery", description: "Customer interviews", icon: "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" },
+  { name: "market", label: "Market", description: "Opportunity scoring", icon: "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" },
+  { name: "offer", label: "Offer", description: "ICP & positioning", icon: "M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7" },
+  { name: "blueprint", label: "Blueprint", description: "Workflow design", icon: "M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6z" },
+  { name: "agents", label: "Agents", description: "Configure network", icon: "M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" },
 ];
 
 export default function LifecyclePage() {
@@ -165,7 +167,7 @@ export default function LifecyclePage() {
               {/* Connection line */}
               <div className="absolute top-8 left-8 right-8 h-0.5 bg-[var(--border-subtle)]" />
 
-              <div className="relative grid grid-cols-4 gap-4">
+              <div className="relative grid grid-cols-6 gap-3">
                 {STAGES.map((stage, i) => {
                   const status = getStageStatus(stage.name);
                   const result = getStageResult(stage.name);
