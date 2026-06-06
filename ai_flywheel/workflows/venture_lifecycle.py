@@ -199,6 +199,8 @@ class VentureLifecycleWorkflow:
         self._kill_reason = ""
         self._stage_results: dict[str, dict] = {}
         self._stages = ["thesis", "discovery", "market", "offer"]
+        self._discovery_complete = False
+        self._transcripts_analyzed = 0
 
     @workflow.signal
     async def approve_stage(self) -> None:
@@ -211,6 +213,18 @@ class VentureLifecycleWorkflow:
         self._killed = True
         self._kill_reason = reason
 
+    @workflow.signal
+    async def transcript_analyzed(self, count: int) -> None:
+        """Signal that a transcript has been analyzed. Auto-proceeds after threshold."""
+        self._transcripts_analyzed = count
+        if count >= 3:  # Auto-proceed after 3 interviews
+            self._discovery_complete = True
+
+    @workflow.signal
+    async def complete_discovery(self) -> None:
+        """Manually signal discovery is complete (proceed to market stage)."""
+        self._discovery_complete = True
+
     @workflow.query
     def get_status(self) -> dict:
         """Query current lifecycle status with full stage details."""
@@ -221,6 +235,8 @@ class VentureLifecycleWorkflow:
             "stages": self._stages,
             "stage_results": self._stage_results,
             "completed_stages": list(self._stage_results.keys()),
+            "transcripts_analyzed": self._transcripts_analyzed,
+            "awaiting_discovery": self._current_stage == "awaiting_discovery",
         }
 
     @workflow.run
@@ -243,7 +259,7 @@ class VentureLifecycleWorkflow:
         if self._killed:
             return {"status": "killed", "stage": "thesis", "reason": self._kill_reason, "results": results}
 
-        # Stage 2: Discovery
+        # Stage 2: Discovery — create project then wait for transcripts
         self._current_stage = "discovery"
         discovery_result = await workflow.execute_activity(
             discovery_stage_activity,
@@ -253,6 +269,17 @@ class VentureLifecycleWorkflow:
         )
         results["discovery"] = discovery_result
         self._stage_results["discovery"] = discovery_result
+
+        # Pause: wait for interview transcripts or manual proceed
+        self._current_stage = "awaiting_discovery"
+        await workflow.wait_condition(
+            lambda: self._discovery_complete or self._approved or self._killed,
+            timeout=timedelta(hours=72),  # Auto-proceed after 72h
+        )
+        if self._killed:
+            return {"status": "killed", "stage": "discovery", "reason": self._kill_reason, "results": results}
+        self._approved = False
+        self._stage_results["discovery"]["transcripts_analyzed"] = self._transcripts_analyzed
 
         # Kill gate check
         kill_check = await workflow.execute_activity(

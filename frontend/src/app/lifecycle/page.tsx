@@ -241,14 +241,44 @@ export default function LifecyclePage() {
             </div>
           )}
 
-          {/* Action Buttons */}
-          {workflowStatus?.stage?.startsWith("awaiting") && (
+          {/* Discovery waiting state */}
+          {workflowStatus?.awaiting_discovery && (
+            <Card padding="lg" className="!border-violet-500/30">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm font-medium text-violet-300">Discovery In Progress</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">
+                    The workflow is waiting for customer interviews. Analyze transcripts on the Discovery page, 
+                    or click &ldquo;Proceed&rdquo; to skip to market analysis.
+                  </p>
+                  <div className="mt-3 flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl font-bold text-[var(--text-primary)]">{workflowStatus.transcripts_analyzed || 0}</span>
+                      <span className="text-xs text-[var(--text-muted)]">/ 3 interviews<br/>analyzed</span>
+                    </div>
+                    <div className="flex-1 max-w-xs">
+                      <div className="confidence-bar">
+                        <div className="confidence-bar-fill confidence-mid" style={{ width: `${Math.min(100, ((workflowStatus.transcripts_analyzed || 0) / 3) * 100)}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <Button onClick={handleApprove}>Proceed to Market</Button>
+                  <Button variant="danger" onClick={handleKill}>Kill</Button>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* General approval state (market) */}
+          {workflowStatus?.stage === "awaiting_market_approval" && (
             <Card padding="md" className="!border-amber-500/30">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-amber-300">Awaiting Approval</p>
+                  <p className="text-sm font-medium text-amber-300">Market Score Low — Approval Needed</p>
                   <p className="text-xs text-[var(--text-muted)] mt-1">
-                    The workflow is paused. Review the results and decide to proceed or kill.
+                    The market opportunity scored below threshold. Review and decide to proceed or kill.
                   </p>
                 </div>
                 <div className="flex gap-3">

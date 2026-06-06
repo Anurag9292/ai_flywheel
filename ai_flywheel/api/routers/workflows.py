@@ -100,6 +100,20 @@ async def kill_workflow(workflow_id: str, reason: str = "Manual kill") -> dict:
     return {"workflow_id": workflow_id, "signal": "kill_venture", "reason": reason, "status": "sent"}
 
 
+@router.post("/{workflow_id}/transcript-analyzed")
+async def transcript_analyzed(workflow_id: str, count: int = 1) -> dict:
+    """Signal that a transcript has been analyzed during discovery stage."""
+    await signal_workflow(workflow_id, "transcript_analyzed", count)
+    return {"workflow_id": workflow_id, "signal": "transcript_analyzed", "count": count, "status": "sent"}
+
+
+@router.post("/{workflow_id}/complete-discovery")
+async def complete_discovery(workflow_id: str) -> dict:
+    """Manually complete the discovery stage and proceed to market."""
+    await signal_workflow(workflow_id, "complete_discovery")
+    return {"workflow_id": workflow_id, "signal": "complete_discovery", "status": "sent"}
+
+
 @router.get("/{workflow_id}/status")
 async def get_workflow_status(workflow_id: str) -> dict:
     """Query current status of a lifecycle workflow."""
