@@ -7,5 +7,4 @@ export { Modal } from "./modal";
 export { ConfidenceBar } from "./confidence-bar";
 export { Spinner } from "./spinner";
 export { EmptyState } from "./empty-state";
-export { VentureSelector } from "./venture-selector";
 export { StatCard } from "./stat-card";
