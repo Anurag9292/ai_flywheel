@@ -166,56 +166,70 @@ async def offer_stage_activity(venture_id: str, domain: str, target_audience: st
 async def blueprint_stage_activity(venture_id: str, domain: str, offer_id: str) -> dict:
     """Stage 5: Generate workflow blueprint from the validated offer."""
     from ai_flywheel.modules.product_intelligence.workflow_blueprint.schemas import (
-        WorkflowBlueprintCreate,
+        GenerateBlueprintRequest,
     )
     from ai_flywheel.modules.product_intelligence.workflow_blueprint.service import WorkflowBlueprintEngine
 
     service = WorkflowBlueprintEngine()
-    try:
-        blueprint = await service.generate_from_description(
-            venture_id,
+    request = GenerateBlueprintRequest(
+        name=f"{domain} Agent Workflow",
+        process_description=(
             f"Create an AI-powered agent workflow for {domain}. "
             f"The workflow should handle: customer interaction, data processing, "
-            f"analysis and recommendations, with human review at critical points.",
-        )
-        # Validate the blueprint
-        validation = await service.validate(venture_id, blueprint.get("id", ""))
-        return {
-            "blueprint_id": blueprint.get("id", ""),
-            "nodes": blueprint.get("node_count", 0),
-            "edges": blueprint.get("edge_count", 0),
-            "valid": validation.get("is_valid", False),
-            "status": "passed",
-        }
-    except Exception as e:
-        return {
-            "status": "passed",
-            "note": f"Blueprint generation skipped: {type(e).__name__}",
-            "blueprint_id": None,
-        }
+            f"analysis and recommendations, with human review at critical decision points."
+        ),
+        constraints=["Include human review for high-stakes decisions", "Keep latency under 30 seconds per step"],
+    )
+    result = await service.generate_from_description(venture_id, request)
+
+    return {
+        "blueprint_id": result.blueprint_id,
+        "nodes": len(result.nodes),
+        "edges": len(result.edges),
+        "human_steps": result.human_steps,
+        "ai_steps": result.ai_steps,
+        "summary": result.summary,
+        "status": "passed",
+    }
 
 
 @activity.defn
 async def agent_setup_activity(venture_id: str, domain: str, blueprint_id: str | None) -> dict:
     """Stage 6: Create agent blueprints for the venture."""
+    from ai_flywheel.modules.agent_runtime.agent_factory.schemas import AgentBlueprintCreate
     from ai_flywheel.modules.agent_runtime.agent_factory.service import AgentFactory
 
     service = AgentFactory()
     agents_created = []
 
     # Create a set of standard agents for the venture
-    agent_configs = [
-        {"name": f"{domain} Research Agent", "archetype": "researcher", "model": "gpt-4o-mini", "system_prompt": f"You are a research agent specialized in {domain}. Gather information, analyze trends, and provide insights."},
-        {"name": f"{domain} Analysis Agent", "archetype": "analyst", "model": "gpt-4o-mini", "system_prompt": f"You are an analysis agent for {domain}. Process data, identify patterns, and generate actionable recommendations."},
-        {"name": f"{domain} Writer Agent", "archetype": "writer", "model": "gpt-4o-mini", "system_prompt": f"You are a content agent for {domain}. Create compelling copy, reports, and communications."},
+    agent_specs = [
+        AgentBlueprintCreate(
+            name=f"{domain} Research Agent",
+            description=f"Gathers market data, competitor info, and trends for {domain}",
+            agent_type="single",
+            model="gpt-4o-mini",
+            system_prompt=f"You are a research agent specialized in {domain}. Gather information, analyze trends, and provide actionable insights.",
+        ),
+        AgentBlueprintCreate(
+            name=f"{domain} Analysis Agent",
+            description=f"Processes findings and generates recommendations for {domain}",
+            agent_type="single",
+            model="gpt-4o-mini",
+            system_prompt=f"You are an analysis agent for {domain}. Process data, identify patterns, and generate actionable recommendations.",
+        ),
+        AgentBlueprintCreate(
+            name=f"{domain} Writer Agent",
+            description=f"Creates content, reports, and communications for {domain}",
+            agent_type="single",
+            model="gpt-4o-mini",
+            system_prompt=f"You are a content agent for {domain}. Create compelling copy, reports, and communications tailored to the target audience.",
+        ),
     ]
 
-    for config in agent_configs:
-        try:
-            agent = await service.create_agent(venture_id, config)
-            agents_created.append({"id": agent.id, "name": agent.name})
-        except Exception:
-            pass
+    for spec in agent_specs:
+        agent = await service.create_agent(venture_id, spec)
+        agents_created.append({"id": agent.id, "name": agent.name})
 
     return {
         "agents_created": len(agents_created),
