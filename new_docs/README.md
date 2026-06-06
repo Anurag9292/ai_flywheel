@@ -97,6 +97,8 @@ the whole game.
    (**PostlineAI**) chronologically and *derive* Layer 1 from its needs.
 3. **`layer1-nodes.md`** — the running catalog of nodes discovered so far. Small
    on purpose. Grows only as ventures demand.
+4. **`stack.md`** — the target tech stack (from the old docs) plus a *lazy
+   arrival schedule*: which infrastructure shows up at which PostlineAI step.
 
 ---
 
