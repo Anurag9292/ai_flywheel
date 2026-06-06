@@ -17,6 +17,9 @@ export default function AgentsPage() {
   const [requireApproval, setRequireApproval] = useState(false);
   const [executeResult, setExecuteResult] = useState<any>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+  const [networkRunning, setNetworkRunning] = useState(false);
+  const [networkResults, setNetworkResults] = useState<any>(null);
 
   const [createForm, setCreateForm] = useState({
     name: "",
@@ -77,6 +80,31 @@ export default function AgentsPage() {
     }
   }
 
+  async function handleSuggestTask() {
+    setSuggesting(true);
+    try {
+      const result = await api.agents.suggestTask(selectedVenture, executeAgentId);
+      setTaskInput(result.suggested_task);
+    } catch (e: any) {
+      setError(e.message || "Failed to suggest task");
+    } finally {
+      setSuggesting(false);
+    }
+  }
+
+  async function handleRunNetwork() {
+    setNetworkRunning(true);
+    setNetworkResults(null);
+    try {
+      const result = await api.agents.runNetwork(selectedVenture);
+      setNetworkResults(result);
+    } catch (e: any) {
+      setError(e.message || "Failed to run agent network");
+    } finally {
+      setNetworkRunning(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -85,9 +113,14 @@ export default function AgentsPage() {
           <div className="flex gap-3 items-center">
             <VentureSelector value={selectedVenture} onChange={setSelectedVenture} />
             {selectedVenture && (
-              <Button onClick={() => setShowCreateForm(!showCreateForm)}>
-                {showCreateForm ? "Cancel" : "Create Agent"}
-              </Button>
+              <>
+                <Button onClick={handleRunNetwork} disabled={networkRunning} variant="ghost">
+                  {networkRunning ? "Running Network..." : "Run Network"}
+                </Button>
+                <Button onClick={() => setShowCreateForm(!showCreateForm)}>
+                  {showCreateForm ? "Cancel" : "Create Agent"}
+                </Button>
+              </>
             )}
           </div>
         }
@@ -148,6 +181,45 @@ export default function AgentsPage() {
         </Card>
       )}
 
+      {/* Network Results Section */}
+      {networkResults && (
+        <Card padding="md">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-[var(--text-primary)]">Network Execution Results</h3>
+              <div className="flex gap-4 text-sm text-[var(--text-muted)]">
+                <span>Total Cost: ${networkResults.total_cost_usd?.toFixed(4)}</span>
+                <span>Duration: {(networkResults.total_duration_ms / 1000).toFixed(1)}s</span>
+              </div>
+            </div>
+            <div className="space-y-3">
+              {networkResults.steps?.map((step: any, i: number) => (
+                <div key={i} className="glass-card p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono text-[var(--accent-purple)]">Step {i + 1}</span>
+                      <span className="text-sm font-medium text-[var(--text-primary)]">{step.agent_name}</span>
+                      <Badge variant={statusVariant(step.status)}>
+                        {step.status}
+                      </Badge>
+                    </div>
+                    <div className="flex gap-3 text-xs text-[var(--text-muted)]">
+                      <span>${step.cost_usd?.toFixed(4)}</span>
+                      <span>{(step.duration_ms / 1000).toFixed(1)}s</span>
+                    </div>
+                  </div>
+                  {step.output && (
+                    <div className="code-block p-3 rounded-md text-xs text-[var(--text-secondary)] whitespace-pre-wrap max-h-40 overflow-y-auto">
+                      {step.output}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>
+      )}
+
       {/* Create Agent Modal */}
       <Modal open={showCreateForm} onClose={() => setShowCreateForm(false)} title="Create New Agent" wide>
         <form onSubmit={handleCreate} className="space-y-4">
@@ -205,14 +277,27 @@ export default function AgentsPage() {
       {/* Execute Modal */}
       <Modal open={showExecuteModal} onClose={() => setShowExecuteModal(false)} title="Execute Agent">
         <form onSubmit={handleExecute} className="space-y-4">
-          <Textarea
-            label="Task"
-            value={taskInput}
-            onChange={(e) => setTaskInput(e.target.value)}
-            rows={4}
-            placeholder="Describe the task for the agent..."
-            required
-          />
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-sm font-medium text-[var(--text-secondary)]">Task</label>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={handleSuggestTask}
+                disabled={suggesting}
+              >
+                {suggesting ? "Suggesting..." : "Suggest Task"}
+              </Button>
+            </div>
+            <Textarea
+              value={taskInput}
+              onChange={(e) => setTaskInput(e.target.value)}
+              rows={4}
+              placeholder="Describe the task for the agent..."
+              required
+            />
+          </div>
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
@@ -226,9 +311,32 @@ export default function AgentsPage() {
             </label>
           </div>
           {executeResult && (
-            <div className="code-block p-3 rounded-md text-sm">
-              <p className="font-medium text-[var(--text-secondary)] mb-1">Result:</p>
-              <pre className="text-xs text-[var(--text-muted)] whitespace-pre-wrap">{JSON.stringify(executeResult, null, 2)}</pre>
+            <div className="glass-card p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="font-medium text-[var(--text-primary)]">Execution Result</p>
+                <Badge variant={statusVariant(executeResult.status)}>
+                  {executeResult.status}
+                </Badge>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-xs text-[var(--text-muted)]">
+                <div>
+                  <span className="block text-[var(--text-secondary)]">Cost</span>
+                  ${executeResult.cost_usd?.toFixed(4)}
+                </div>
+                <div>
+                  <span className="block text-[var(--text-secondary)]">Tokens</span>
+                  {executeResult.tokens_input} in / {executeResult.tokens_output} out
+                </div>
+                <div>
+                  <span className="block text-[var(--text-secondary)]">Duration</span>
+                  {(executeResult.duration_ms / 1000).toFixed(1)}s
+                </div>
+              </div>
+              {executeResult.output && (
+                <div className="code-block p-3 rounded-md text-sm text-[var(--text-secondary)] whitespace-pre-wrap max-h-60 overflow-y-auto">
+                  {executeResult.output}
+                </div>
+              )}
             </div>
           )}
           <div className="flex gap-2 justify-end">

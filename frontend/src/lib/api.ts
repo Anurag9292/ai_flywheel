@@ -95,6 +95,16 @@ export const api = {
         method: "POST",
         body: JSON.stringify(data),
       }),
+    suggestTask: (ventureId: string, agentId: string) =>
+      apiFetch<any>(`/api/agents/suggest-task`, {
+        method: "POST",
+        body: JSON.stringify({ agent_id: agentId, venture_id: ventureId }),
+      }),
+    runNetwork: (ventureId: string) =>
+      apiFetch<any>(`/api/agents/run-network`, {
+        method: "POST",
+        body: JSON.stringify({ venture_id: ventureId }),
+      }),
   },
   discovery: {
     listProjects: (ventureId: string) =>
