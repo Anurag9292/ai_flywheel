@@ -138,8 +138,12 @@ async def market_stage_activity(venture_id: str, domain: str) -> dict:
 
 @activity.defn
 async def offer_stage_activity(venture_id: str, domain: str, target_audience: str) -> dict:
-    """Stage 4: Design the offer."""
-    from ai_flywheel.modules.product_intelligence.offer_design.schemas import OfferCreate
+    """Stage 4: Design the offer (ICP + positioning + pricing + landing copy)."""
+    from ai_flywheel.modules.product_intelligence.offer_design.schemas import (
+        LandingCopyRequest,
+        OfferCreate,
+        PricingRequest,
+    )
     from ai_flywheel.modules.product_intelligence.offer_design.service import OfferDesignEngine
 
     service = OfferDesignEngine()
@@ -154,10 +158,37 @@ async def offer_stage_activity(venture_id: str, domain: str, target_audience: st
         ),
     )
 
+    # After offer is created, also generate pricing and landing copy
+    has_pricing = False
+    has_landing_copy = False
+    try:
+        await service.generate_pricing(
+            venture_id,
+            PricingRequest(
+                offer_id=offer.id,
+                value_delivered=f"AI-powered {domain} automation",
+                target_segment="SMB",
+            ),
+        )
+        has_pricing = True
+    except Exception:
+        pass  # Non-critical — ICP + positioning are the essentials
+
+    try:
+        await service.generate_landing_copy(
+            venture_id,
+            LandingCopyRequest(offer_id=offer.id, tone="professional"),
+        )
+        has_landing_copy = True
+    except Exception:
+        pass  # Non-critical — ICP + positioning are the essentials
+
     return {
         "offer_id": offer.id,
         "has_icp": offer.icp is not None,
         "has_positioning": offer.positioning is not None,
+        "has_pricing": has_pricing,
+        "has_landing_copy": has_landing_copy,
         "status": "passed",
     }
 
@@ -240,18 +271,28 @@ async def agent_setup_activity(venture_id: str, domain: str, blueprint_id: str |
 
 @activity.defn
 async def kill_check_activity(venture_id: str, thesis_id: str) -> dict:
-    """Check for kill signals at any stage gate."""
+    """Check for kill signals AND confidence threshold at stage gates."""
     from ai_flywheel.modules.product_intelligence.venture_thesis.service import VentureThesisEngine
 
     service = VentureThesisEngine()
     try:
+        # Check kill signals
         kill_signals = await service.check_kill_signals(venture_id, thesis_id)
-        # Returns a list of triggered kill signal messages
-        return {
-            "should_kill": len(kill_signals) > 0,
-            "reason": kill_signals[0] if kill_signals else "",
-            "confidence": 0.5,
-        }
+        if kill_signals:
+            return {"should_kill": True, "reason": kill_signals[0], "confidence": 0.0}
+
+        # Check confidence threshold (Evidence Ladder)
+        thesis = await service.get_thesis(venture_id, thesis_id)
+        confidence = thesis.confidence if thesis else 0.5
+
+        if confidence < 0.3:
+            return {
+                "should_kill": True,
+                "reason": f"Confidence too low: {confidence:.0%}. Evidence ladder threshold not met.",
+                "confidence": confidence,
+            }
+
+        return {"should_kill": False, "reason": "", "confidence": confidence}
     except Exception:
         # If check fails, don't kill — let it proceed
         return {"should_kill": False, "reason": "", "confidence": 0.5}
@@ -366,6 +407,14 @@ class VentureLifecycleWorkflow:
         )
         if kill_check["should_kill"]:
             return {"status": "killed", "stage": "discovery_gate", "reason": kill_check["reason"], "results": results}
+
+        # Evidence Ladder: if confidence is between 0.3–0.5, require approval before proceeding
+        if not kill_check["should_kill"] and kill_check.get("confidence", 1.0) < 0.5:
+            self._current_stage = "awaiting_confidence_approval"
+            await workflow.wait_condition(lambda: self._approved or self._killed)
+            if self._killed:
+                return {"status": "killed", "stage": "confidence_gate", "reason": self._kill_reason, "results": results}
+            self._approved = False
 
         # Stage 3: Market
         self._current_stage = "market"

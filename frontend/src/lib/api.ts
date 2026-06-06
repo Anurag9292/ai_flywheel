@@ -206,6 +206,12 @@ export const api = {
         method: "POST",
       }),
   },
+  workflows: {
+    deployGraph: (data: any) =>
+      apiFetch<any>(`/api/workflows/deploy-graph`, { method: "POST", body: JSON.stringify(data) }),
+    pollGraphDeploy: (jobId: string) =>
+      apiFetch<any>(`/api/workflows/deploy-graph/${jobId}`),
+  },
   offers: {
     list: (ventureId: string) =>
       apiFetch<any[]>(`/api/offers/?venture_id=${ventureId}`),

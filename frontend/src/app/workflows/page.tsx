@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, useMemo } from "react";
+import { useCallback, useState, useMemo, useEffect } from "react";
 import {
   ReactFlow,
   addEdge,
@@ -19,6 +19,7 @@ import "@xyflow/react/dist/style.css";
 import AgentNode from "@/components/workflow/agent-node";
 import { NodePalette } from "@/components/workflow/node-palette";
 import { PageHeader, Button, Card, Modal, Input, Select, Badge } from "@/components/ui";
+import { api } from "@/lib/api";
 
 const initialNodes: Node[] = [
   { id: "start", type: "agentNode", position: { x: 300, y: 50 }, data: { label: "Start", type: "start" } },
@@ -41,6 +42,14 @@ export default function WorkflowsPage() {
   const [showCompile, setShowCompile] = useState(false);
   const [compiled, setCompiled] = useState<any>(null);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [ventures, setVentures] = useState<any[]>([]);
+  const [selectedVenture, setSelectedVenture] = useState<string>("");
+  const [deploying, setDeploying] = useState(false);
+  const [deployResult, setDeployResult] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.ventures.list().then(setVentures).catch(() => {});
+  }, []);
 
   const nodeTypes = useMemo(() => ({ agentNode: AgentNode }), []);
 
@@ -94,6 +103,43 @@ export default function WorkflowsPage() {
     setShowCompile(true);
   }
 
+  async function handleDeployAndRun() {
+    if (!selectedVenture) {
+      setDeployResult("Please select a venture first.");
+      return;
+    }
+    setDeploying(true);
+    setDeployResult(null);
+
+    // Compile the graph
+    const config = {
+      venture_id: selectedVenture,
+      name: "compiled-workflow",
+      steps: nodes
+        .filter((n) => (n.data as any).type !== "start" && (n.data as any).type !== "end")
+        .map((n) => ({
+          id: n.id,
+          type: (n.data as any).type,
+          label: (n.data as any).label,
+          model: (n.data as any).model || null,
+          connections: edges
+            .filter((e) => e.source === n.id)
+            .map((e) => e.target),
+        })),
+      edges: edges.map((e) => ({ from: e.source, to: e.target })),
+      execution_order: topologicalSort(nodes, edges),
+    };
+
+    try {
+      const result = await api.workflows.deployGraph(config);
+      setDeployResult(`Deployed! Job ID: ${result.job_id} — Status: ${result.status}`);
+    } catch (err: any) {
+      setDeployResult(`Deploy failed: ${err.message || "Unknown error"}`);
+    } finally {
+      setDeploying(false);
+    }
+  }
+
   function topologicalSort(nodes: Node[], edges: Edge[]): string[] {
     const adj: Record<string, string[]> = {};
     const inDegree: Record<string, number> = {};
@@ -126,12 +172,31 @@ export default function WorkflowsPage() {
         title="Workflow Builder"
         subtitle="Design multi-agent systems visually. Connect nodes to define execution flow."
         actions={
-          <div className="flex gap-3">
+          <div className="flex items-center gap-3">
+            <select
+              value={selectedVenture}
+              onChange={(e) => setSelectedVenture(e.target.value)}
+              className="px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
+            >
+              <option value="">Select Venture...</option>
+              {ventures.map((v) => (
+                <option key={v.id} value={v.id}>{v.name}</option>
+              ))}
+            </select>
             <Button variant="ghost" onClick={() => { setNodes(initialNodes); setEdges(initialEdges); }}>Reset</Button>
             <Button onClick={handleCompile}>Compile to Temporal</Button>
+            <Button onClick={handleDeployAndRun} disabled={deploying || !selectedVenture}>
+              {deploying ? "Deploying..." : "Deploy & Run"}
+            </Button>
           </div>
         }
       />
+
+      {deployResult && (
+        <Card padding="sm" className="!p-3">
+          <p className="text-sm text-[var(--text-secondary)]">{deployResult}</p>
+        </Card>
+      )}
 
       <div className="grid grid-cols-[220px_1fr] gap-4 h-[calc(100%-80px)]">
         {/* Sidebar palette */}

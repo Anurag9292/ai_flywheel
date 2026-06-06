@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 from fastapi import APIRouter
@@ -15,6 +16,9 @@ from ai_flywheel.workflows.venture_lifecycle import (
 )
 
 router = APIRouter()
+
+# In-memory job store for graph deployments
+_graph_jobs: dict[str, dict] = {}
 
 
 class StartWorkflowRequest(BaseModel):
@@ -242,4 +246,135 @@ async def get_workflow_result(workflow_id: str) -> dict:
             "workflow_id": workflow_id,
             "status": "error",
             "error": str(e),
+        }
+
+
+# --- Deploy Graph ---
+
+
+class DeployGraphRequest(BaseModel):
+    venture_id: str
+    name: str
+    steps: list[dict]
+    edges: list[dict]
+    execution_order: list[str]
+
+
+@router.post("/deploy-graph")
+async def deploy_graph_workflow(request: DeployGraphRequest) -> dict:
+    """Deploy a compiled graph as agent executions.
+
+    For each step in execution_order that is an 'agent' type node,
+    creates or looks up the agent and executes them in order with
+    context flowing between them.
+    """
+    job_id = str(uuid.uuid4())
+    _graph_jobs[job_id] = {"status": "running", "steps": [], "venture_id": request.venture_id}
+
+    # Run in background
+    asyncio.create_task(_execute_graph(job_id, request))
+
+    return {"job_id": job_id, "status": "running"}
+
+
+@router.get("/deploy-graph/{job_id}")
+async def get_graph_deploy_result(job_id: str) -> dict:
+    """Poll for graph deployment results."""
+    job = _graph_jobs.get(job_id)
+    if not job:
+        return {"status": "not_found"}
+    return job
+
+
+async def _execute_graph(job_id: str, request: DeployGraphRequest):
+    """Background task that executes graph nodes in topological order."""
+    from ai_flywheel.modules.agent_runtime.agent_factory.schemas import (
+        AgentBlueprintCreate,
+        AgentExecutionRequest,
+    )
+    from ai_flywheel.modules.agent_runtime.agent_factory.service import AgentFactory
+
+    factory = AgentFactory()
+
+    try:
+        venture_id = request.venture_id
+        steps_by_id = {step["id"]: step for step in request.steps}
+        steps_executed = []
+        previous_output = ""
+        total_cost = 0.0
+        total_duration = 0.0
+
+        for node_id in request.execution_order:
+            step_def = steps_by_id.get(node_id)
+            if not step_def or step_def.get("type") != "agent":
+                continue
+
+            label = step_def.get("label", "Agent")
+            model = step_def.get("model", "gpt-4o-mini")
+
+            # Look up existing agent or create one
+            existing_agents = await factory.list_agents(venture_id)
+            agent = next((a for a in existing_agents if a.name == label), None)
+
+            if not agent:
+                agent = await factory.create_agent(
+                    venture_id,
+                    AgentBlueprintCreate(
+                        name=label,
+                        description=f"Graph-deployed agent: {label}",
+                        agent_type="single",
+                        model=model,
+                        system_prompt=f"You are {label}. Execute your task based on the provided context.",
+                    ),
+                )
+
+            # Build task with context from previous step
+            task_text = f"Execute your role as '{label}' for workflow '{request.name}'."
+            if previous_output:
+                task_text += f"\n\nContext from previous step:\n{previous_output[:2000]}"
+
+            exec_request = AgentExecutionRequest(
+                agent_id=agent.id,
+                task=task_text,
+                context={"previous_output": previous_output[:2000]} if previous_output else {},
+            )
+
+            result = await factory.execute(venture_id, exec_request)
+
+            step_result = {
+                "node_id": node_id,
+                "agent_name": label,
+                "agent_id": agent.id,
+                "status": result.status,
+                "output": result.output or "",
+                "cost_usd": result.cost_usd,
+                "duration_ms": result.duration_ms,
+            }
+            steps_executed.append(step_result)
+            total_cost += result.cost_usd
+            total_duration += result.duration_ms
+
+            if result.output:
+                previous_output = result.output
+
+            # Update job progress
+            _graph_jobs[job_id] = {
+                "status": "running",
+                "steps": steps_executed,
+                "total_cost_usd": total_cost,
+                "total_duration_ms": total_duration,
+                "progress": f"{len(steps_executed)} agents executed",
+            }
+
+        _graph_jobs[job_id] = {
+            "status": "completed",
+            "steps": steps_executed,
+            "total_cost_usd": total_cost,
+            "total_duration_ms": total_duration,
+        }
+    except Exception as e:
+        _graph_jobs[job_id] = {
+            "status": "error",
+            "error": str(e),
+            "steps": _graph_jobs.get(job_id, {}).get("steps", []),
         }
