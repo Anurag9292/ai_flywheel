@@ -93,7 +93,10 @@ async def signal_workflow(workflow_id: str, signal_name: str, arg: Any = None) -
     """Send a signal to a running workflow."""
     client = await get_temporal_client()
     handle = client.get_workflow_handle(workflow_id)
-    await handle.signal(signal_name, arg)
+    if arg is not None:
+        await handle.signal(signal_name, arg)
+    else:
+        await handle.signal(signal_name)
     logger.info("workflow_signaled", workflow_id=workflow_id, signal=signal_name)
 
 

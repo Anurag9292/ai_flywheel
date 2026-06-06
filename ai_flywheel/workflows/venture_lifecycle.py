@@ -279,25 +279,25 @@ class VentureLifecycleWorkflow:
         self._transcripts_analyzed = 0
 
     @workflow.signal
-    async def approve_stage(self) -> None:
+    def approve_stage(self) -> None:
         """Signal to approve the current stage and proceed."""
         self._approved = True
 
     @workflow.signal
-    async def kill_venture(self, reason: str) -> None:
+    def kill_venture(self, reason: str = "No reason provided") -> None:
         """Signal to kill the venture."""
         self._killed = True
         self._kill_reason = reason
 
     @workflow.signal
-    async def transcript_analyzed(self, count: int) -> None:
+    def transcript_analyzed(self, count: int = 1) -> None:
         """Signal that a transcript has been analyzed. Auto-proceeds after threshold."""
         self._transcripts_analyzed = count
-        if count >= 3:  # Auto-proceed after 3 interviews
+        if count >= 3:
             self._discovery_complete = True
 
     @workflow.signal
-    async def complete_discovery(self) -> None:
+    def complete_discovery(self) -> None:
         """Manually signal discovery is complete (proceed to market stage)."""
         self._discovery_complete = True
 
