@@ -149,11 +149,25 @@ export default function AgentsPage() {
     setNetworkRunning(true);
     setNetworkResults(null);
     try {
-      const result = await api.agents.runNetwork(selectedVenture);
-      setNetworkResults(result);
+      const { job_id } = await api.agents.runNetwork(selectedVenture);
+      // Poll for results
+      const poll = setInterval(async () => {
+        try {
+          const result = await api.agents.pollNetwork(job_id);
+          if (result.status === "completed" || result.status === "failed") {
+            clearInterval(poll);
+            setNetworkResults(result);
+            setNetworkRunning(false);
+          } else {
+            setNetworkResults(result); // Show progress
+          }
+        } catch {
+          clearInterval(poll);
+          setNetworkRunning(false);
+        }
+      }, 2000);
     } catch (e: any) {
       setError(e.message || "Failed to run agent network");
-    } finally {
       setNetworkRunning(false);
     }
   }
@@ -239,10 +253,19 @@ export default function AgentsPage() {
         <Card padding="md">
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-[var(--text-primary)]">Network Execution Results</h3>
+              <h3 className="text-lg font-semibold text-[var(--text-primary)]">
+                {networkResults.status === "running" ? "Network Running..." : "Network Execution Results"}
+              </h3>
               <div className="flex gap-4 text-sm text-[var(--text-muted)]">
-                <span>Total Cost: ${networkResults.total_cost_usd?.toFixed(4)}</span>
-                <span>Duration: {(networkResults.total_duration_ms / 1000).toFixed(1)}s</span>
+                {networkResults.progress && (
+                  <span>Progress: {networkResults.progress}</span>
+                )}
+                {networkResults.total_cost_usd != null && (
+                  <span>Total Cost: ${networkResults.total_cost_usd?.toFixed(4)}</span>
+                )}
+                {networkResults.total_duration_ms != null && (
+                  <span>Duration: {(networkResults.total_duration_ms / 1000).toFixed(1)}s</span>
+                )}
               </div>
             </div>
             <div className="space-y-3">

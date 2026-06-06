@@ -1,6 +1,7 @@
 """Agent management and execution endpoints."""
 import asyncio
 import time
+import uuid as uuid_mod
 
 import structlog
 from fastapi import APIRouter, BackgroundTasks, HTTPException
@@ -57,10 +58,8 @@ class RunNetworkRequest(BaseModel):
     venture_id: str
 
 
-class NetworkResult(BaseModel):
-    steps: list[dict[str, Any]]
-    total_cost_usd: float
-    total_duration_ms: float
+# In-memory job store for network runs
+_network_jobs: dict[str, dict] = {}
 
 
 # --- Existing endpoints ---
@@ -192,86 +191,102 @@ async def suggest_task(request: SuggestTaskRequest):
     )
 
 
-@router.post("/run-network", response_model=NetworkResult)
-async def run_agent_network(request: RunNetworkRequest):
-    """Run all agents in sequence: Research -> Analysis -> Writer. Each agent's output feeds the next."""
-    venture_id = request.venture_id
+@router.post("/run-network")
+async def run_agent_network(request: RunNetworkRequest) -> dict:
+    """Start running all agents in sequence. Returns job_id to poll."""
+    job_id = str(uuid_mod.uuid4())
+    _network_jobs[job_id] = {"status": "running", "steps": [], "venture_id": request.venture_id}
 
-    # 1. List all agents for the venture
-    agents = await factory.list_agents(venture_id)
-    if not agents:
-        raise HTTPException(404, "No agents found for this venture")
+    # Run in background
+    asyncio.create_task(_execute_network(job_id, request.venture_id))
 
-    # 2. Sort agents: research first, then analysis, then writer/synthesis/execution
-    def sort_key(agent: AgentBlueprintResponse) -> int:
-        name_lower = (agent.name or "").lower()
-        desc_lower = (agent.description or "").lower()
-        type_lower = (agent.agent_type or "").lower()
-        combined = f"{name_lower} {desc_lower} {type_lower}"
+    return {"job_id": job_id, "status": "running"}
 
-        if "research" in combined:
-            return 0
-        elif "analysis" in combined or "analy" in combined:
-            return 1
-        elif "writer" in combined or "synth" in combined or "execution" in combined:
+
+@router.get("/run-network/{job_id}")
+async def get_network_result(job_id: str) -> dict:
+    """Poll for network run results."""
+    job = _network_jobs.get(job_id)
+    if not job:
+        return {"status": "not_found"}
+    return job
+
+
+async def _execute_network(job_id: str, venture_id: str):
+    """Background task that runs all agents in sequence."""
+    try:
+        agents = await factory.list_agents(venture_id)
+        if not agents:
+            _network_jobs[job_id] = {"status": "completed", "steps": [], "error": "No agents found"}
+            return
+
+        # Sort: research first, then analysis, then writer
+        def sort_key(a):
+            name = (a.name or "").lower()
+            if "research" in name:
+                return 0
+            if "analy" in name:
+                return 1
             return 2
-        return 3
 
-    sorted_agents = sorted(agents, key=sort_key)
+        agents = sorted(agents, key=sort_key)
 
-    # 3. Execute in sequence, passing previous output as context
-    steps: list[dict[str, Any]] = []
-    total_cost = 0.0
-    total_duration = 0.0
-    accumulated_context: dict[str, Any] = {}
+        steps = []
+        previous_output = ""
+        total_cost = 0.0
+        total_duration = 0.0
 
-    for agent in sorted_agents:
-        task = (
-            f"Execute your role as {agent.name}. "
-            f"{'Use the following context from previous agents: ' + str(accumulated_context) if accumulated_context else 'You are the first agent in the pipeline.'}"
-        )
+        for agent in agents:
+            task_text = "Based on the venture context"
+            if previous_output:
+                task_text += f" and previous analysis:\n{previous_output[:1000]}\n\nProvide your analysis."
+            else:
+                task_text += ", conduct your primary analysis for this venture."
 
-        exec_request = AgentExecutionRequest(
-            agent_id=agent.id,
-            task=task,
-            context=accumulated_context,
-            require_approval=False,
-        )
+            request = AgentExecutionRequest(
+                agent_id=agent.id,
+                task=task_text,
+                context={"previous_output": previous_output[:2000]} if previous_output else {},
+            )
 
-        try:
-            result = await factory.execute(venture_id, exec_request)
-            step_data = {
-                "agent_id": agent.id,
+            result = await factory.execute(venture_id, request)
+
+            step = {
                 "agent_name": agent.name,
-                "agent_type": agent.agent_type,
+                "agent_id": agent.id,
                 "status": result.status,
-                "output": result.output,
+                "output": result.output or "",
                 "cost_usd": result.cost_usd,
                 "duration_ms": result.duration_ms,
             }
-            steps.append(step_data)
+            steps.append(step)
             total_cost += result.cost_usd
             total_duration += result.duration_ms
 
-            # Feed output to next agent
             if result.output:
-                accumulated_context[f"{agent.name}_output"] = result.output
-        except Exception as e:
-            steps.append({
-                "agent_id": agent.id,
-                "agent_name": agent.name,
-                "agent_type": agent.agent_type,
-                "status": "failed",
-                "output": str(e),
-                "cost_usd": 0.0,
-                "duration_ms": 0.0,
-            })
+                previous_output = result.output
 
-    return NetworkResult(
-        steps=steps,
-        total_cost_usd=total_cost,
-        total_duration_ms=total_duration,
-    )
+            # Update job progress
+            _network_jobs[job_id] = {
+                "status": "running",
+                "steps": steps,
+                "total_cost_usd": total_cost,
+                "total_duration_ms": total_duration,
+                "progress": f"{len(steps)}/{len(agents)}",
+            }
+
+        _network_jobs[job_id] = {
+            "status": "completed",
+            "steps": steps,
+            "total_cost_usd": total_cost,
+            "total_duration_ms": total_duration,
+        }
+    except Exception as e:
+        _network_jobs[job_id] = {
+            "status": "failed",
+            "error": str(e),
+            "steps": _network_jobs.get(job_id, {}).get("steps", []),
+        }
 
 
 @router.get("/intelligence")
