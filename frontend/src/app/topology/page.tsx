@@ -13,6 +13,7 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import FlowNode from "@/components/topology/flow-node";
+import TriggerPanel from "@/components/topology/trigger-panel";
 import { buildFlow } from "@/lib/topology-layout";
 import {
   fetchTopology,
@@ -44,18 +45,40 @@ export default function TopologyPage() {
         (c.steps ?? []).some((s) => s.node),
       );
       setChains(filtered);
-      // Auto-select the most recent run so there's always something to watch.
-      if (filtered.length > 0 && selectedChain === null) {
-        setSelectedChain(filtered[0].correlation_id);
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [selectedChain]);
+  }, []);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // After triggering a run, reload traces and jump to (and play) the new run.
+  const onTriggered = useCallback(
+    async (correlationId: string) => {
+      try {
+        const tr = await fetchTraces();
+        const filtered = (tr.chains ?? []).filter((c) =>
+          (c.steps ?? []).some((s) => s.node),
+        );
+        setChains(filtered);
+        if (correlationId) {
+          setSelectedChain(correlationId);
+          setStep(0);
+          setPlaying(true);
+        } else {
+          // Cleared: drop selection.
+          setSelectedChain(null);
+          setStep(0);
+          setPlaying(false);
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [],
+  );
 
   const { nodes: baseNodes, edges: baseEdges } = useMemo<{
     nodes: Node[];
@@ -188,6 +211,8 @@ export default function TopologyPage() {
 
         {/* Chronological timeline / replay (View 2). */}
         <aside className="flex w-96 shrink-0 flex-col border-l border-white/10 bg-[#0d0d1a]">
+          <TriggerPanel onTriggered={onTriggered} />
+
           <div className="border-b border-white/10 p-4">
             <h2 className="mb-1 text-sm font-semibold">Run timeline</h2>
             <p className="text-xs text-slate-400">
@@ -200,8 +225,8 @@ export default function TopologyPage() {
           <div className="border-b border-white/10 p-3">
             {chains.length === 0 && (
               <p className="text-xs text-slate-500">
-                No runs yet. Seed one with{" "}
-                <code>uv run python seed_traces.py</code> then Refresh.
+                No runs yet. Use <span className="text-emerald-300">Trigger a run</span>{" "}
+                above to publish a real event and watch it flow.
               </p>
             )}
             <div className="flex flex-wrap gap-1.5">
