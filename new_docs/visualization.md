@@ -104,6 +104,38 @@ through the **real** bus and watches the **real** nodes react. Fake *libraries*
 
 ---
 
+## Debugging the node flow (VS Code)
+
+You can step through a run in a debugger. Configs are committed in `.vscode/`
+(requires the **Python** + **Python Debugger** extensions).
+
+Two launch configs:
+
+- **Debug dev API (uvicorn)** — runs the API under the debugger so clicking
+  *"Run desk research"* in the browser pauses at your Python breakpoints. Run
+  the frontend separately (`cd frontend && npm run dev`). *No `--reload`* — it
+  detaches the debugger; restart the session after editing.
+- **Debug a single run (demo_step2)** — steps the whole chain end-to-end with no
+  browser/HTTP. Simplest place to start.
+
+Recommended breakpoints, in call order:
+
+| File | Symbol | What you see |
+|---|---|---|
+| `flywheel/devserver/app.py` | `publish()` | HTTP entry; the `Event` is created |
+| `flywheel/core/events.py` | `InMemoryEventBus.publish()` | which subscribers match the event type |
+| `flywheel/core/node.py` | `handler()` / `run()` | per-node invocation; **`_bus.publish(out)` is where it recurses into the next node** |
+| `flywheel/core/substrate.py` | `TraceRecorder.record()` | the automatic tracing wrapper |
+| `flywheel/nodes/market_scanner.py` | `handle()` | first node's work (calls fake libs + agent) |
+| `flywheel/nodes/thesis_tracker.py` | `handle()` | downstream node reacting to the emitted event |
+
+**Step Into (F11)** from `publish()` and watch the Call Stack recurse depth-first:
+`publish → bus.publish → handler → record → market-scanner.handle → ctx.emit →
+bus.publish → thesis-tracker.handle`. The Variables pane shows the live `event`,
+`ctx.emitted`, and trace dict at each hop.
+
+---
+
 ## Rendering — reuse the `/vision-v2` engine
 
 A new **`/topology`** route reuses the existing React Flow node/edge components
