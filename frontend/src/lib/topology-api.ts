@@ -76,25 +76,71 @@ export interface TracesResponse {
   chains: TraceChain[];
 }
 
-async function getJSON<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, { cache: "no-store" });
+// How long to wait before assuming the backend isn't going to answer. The dev
+// runtime is sub-millisecond, so a multi-second wait almost always means the
+// backend is paused (e.g. stopped at a breakpoint in the debugger) or down.
+const REQUEST_TIMEOUT_MS = 6000;
+
+/** Thrown when a request times out or the backend is unreachable/unresponsive.
+ *  Distinguished so the UI can show a friendly "paused/slow — retry" message
+ *  rather than a raw HTTP error. */
+export class BackendUnavailableError extends Error {
+  constructor(public readonly path: string) {
+    super(
+      `The dev API didn't respond (${path}). It may be paused at a breakpoint ` +
+        `in the debugger, slow, or not running. Resume/restart it, then retry.`,
+    );
+    this.name = "BackendUnavailableError";
+  }
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      cache: "no-store",
+      signal: controller.signal,
+      ...init,
+    });
+  } catch (e) {
+    // AbortError (timeout) or a network/connection failure — treat as the
+    // backend being unavailable (commonly: paused at a breakpoint).
+    if (e instanceof DOMException && e.name === "AbortError") {
+      throw new BackendUnavailableError(path);
+    }
+    throw new BackendUnavailableError(path);
+  } finally {
+    clearTimeout(timer);
+  }
+  // 500/502/503/504 from the Next dev proxy mean the upstream (our FastAPI dev
+  // server) didn't answer — almost always a paused (breakpoint) or stopped
+  // backend. Surface the friendly, actionable error rather than a raw 500.
+  if (
+    res.status === 500 ||
+    res.status === 502 ||
+    res.status === 503 ||
+    res.status === 504
+  ) {
+    throw new BackendUnavailableError(path);
+  }
   if (!res.ok) {
     throw new Error(`${path} failed: ${res.status} ${res.statusText}`);
   }
   return (await res.json()) as T;
 }
 
+async function getJSON<T>(path: string): Promise<T> {
+  return request<T>(path);
+}
+
 async function postJSON<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  return request<T>(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-    cache: "no-store",
   });
-  if (!res.ok) {
-    throw new Error(`${path} failed: ${res.status} ${res.statusText}`);
-  }
-  return (await res.json()) as T;
 }
 
 export interface PublishResponse {
