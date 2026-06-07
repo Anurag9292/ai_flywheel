@@ -17,7 +17,10 @@ ENV/
 .env
 
 # IDE
-.vscode/
+.vscode/*
+# but DO share the debug configs (see new_docs/visualization.md "Debugging")
+!.vscode/launch.json
+!.vscode/settings.json
 .idea/
 *.swp
 *.swo
