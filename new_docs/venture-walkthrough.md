@@ -493,3 +493,5 @@ the same mistake the old `docs/` made.
 - **`vision.md`** — the model and principles in concise form.
 - **The `/vision-v2` page** in the frontend — this walkthrough rendered
   visually, with the PostlineAI topology wired by event edges.
+- **`visualization.md`** — the plan for a *code-derived* topology map and live
+  trace replay (the running system, not the hand-drawn design).

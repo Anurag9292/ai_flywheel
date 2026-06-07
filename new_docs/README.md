@@ -99,6 +99,8 @@ the whole game.
    on purpose. Grows only as ventures demand.
 4. **`stack.md`** — the target tech stack (from the old docs) plus a *lazy
    arrival schedule*: which infrastructure shows up at which PostlineAI step.
+5. **`visualization.md`** — how we *see* the system: a code-derived topology
+   map and live trace replay, rendered in the `/vision-v2` React Flow engine.
 
 ---
 
