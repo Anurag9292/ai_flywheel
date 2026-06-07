@@ -38,6 +38,8 @@ out/
 postgres_data/
 *.db
 *.sqlite3
+*.jsonl
+uv.lock
 
 # OS
 .DS_Store
