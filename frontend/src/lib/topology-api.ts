@@ -84,5 +84,32 @@ async function getJSON<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+async function postJSON<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error(`${path} failed: ${res.status} ${res.statusText}`);
+  }
+  return (await res.json()) as T;
+}
+
+export interface PublishResponse {
+  correlation_id: string;
+  published: { type: string; venture_id: string };
+  chain: TraceChain;
+}
+
 export const fetchTopology = () => getJSON<Topology>("/api/topology");
 export const fetchTraces = () => getJSON<TracesResponse>("/api/traces");
+
+export const publishEvent = (body: {
+  type: string;
+  venture_id?: string;
+  payload?: Record<string, unknown>;
+}) => postJSON<PublishResponse>("/api/publish", body);
+
+export const resetTraces = () => postJSON<{ status: string }>("/api/reset", {});

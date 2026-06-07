@@ -1,10 +1,13 @@
-import json
-
 from fastapi.testclient import TestClient
 
 from flywheel.devserver.app import app
 
 client = TestClient(app)
+
+
+def setup_function() -> None:
+    # Each test starts from a clean in-memory trace state.
+    client.post("/api/reset")
 
 
 def test_health() -> None:
@@ -23,35 +26,49 @@ def test_topology_endpoint_returns_describe_shape() -> None:
     assert topo["substrate"]["name"] == "trace-recorder"
 
 
-def test_traces_endpoint_groups_by_correlation(tmp_path, monkeypatch) -> None:
-    # Point the app at a temp trace log with two rows sharing a correlation id.
-    log = tmp_path / "traces.jsonl"
-    rows = [
-        {"node": "a", "correlation_id": "c1", "trigger_type": "x"},
-        {"node": "b", "correlation_id": "c1", "trigger_type": "y"},
-        {"node": "c", "correlation_id": "c2", "trigger_type": "z"},
-    ]
-    log.write_text("\n".join(json.dumps(r) for r in rows))
-
-    import flywheel.devserver.app as appmod
-
-    monkeypatch.setattr(appmod, "DEFAULT_TRACE_LOG", log)
-
-    r = client.get("/api/traces")
+def test_publish_triggers_real_multistep_run() -> None:
+    r = client.post(
+        "/api/publish",
+        json={
+            "type": "research.requested",
+            "venture_id": "postlineai",
+            "payload": {
+                "thesis": "B2B founders pay $499/mo",
+                "keywords": ["linkedin ghostwriter"],
+                "competitor_query": "AI LinkedIn ghostwriting competitors",
+            },
+        },
+    )
     assert r.status_code == 200
     body = r.json()
-    assert body["count"] == 3
-    chains = {c["correlation_id"]: c for c in body["chains"]}
-    assert len(chains["c1"]["steps"]) == 2
-    assert len(chains["c2"]["steps"]) == 1
+    chain = body["chain"]
+    nodes = [s["node"] for s in chain["steps"]]
+    # The real chain: market-scanner then thesis-tracker reacting to it.
+    assert nodes == ["market-scanner", "thesis-tracker"]
+    assert chain["steps"][0]["is_start"] is True
+    assert chain["steps"][-1]["is_end"] is True
 
 
-def test_traces_endpoint_empty_when_no_log(tmp_path, monkeypatch) -> None:
-    import flywheel.devserver.app as appmod
+def test_traces_reflects_published_runs_and_reset() -> None:
+    client.post("/api/publish", json={"type": "research.requested", "payload": {}})
+    body = client.get("/api/traces").json()
+    assert body["count"] >= 1
+    assert len(body["chains"]) >= 1
 
-    monkeypatch.setattr(appmod, "DEFAULT_TRACE_LOG", tmp_path / "none.jsonl")
-    r = client.get("/api/traces")
-    assert r.json()["count"] == 0
+    client.post("/api/reset")
+    assert client.get("/api/traces").json()["count"] == 0
+
+
+def test_evidence_event_runs_thesis_tracker_only() -> None:
+    r = client.post(
+        "/api/publish",
+        json={
+            "type": "evidence.collected",
+            "payload": {"assumption": "willing_to_pay_499", "supports": True},
+        },
+    )
+    nodes = [s["node"] for s in r.json()["chain"]["steps"]]
+    assert nodes == ["thesis-tracker"]
 
 
 def test_build_chain_orders_and_links_causally() -> None:

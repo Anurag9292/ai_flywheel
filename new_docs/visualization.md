@@ -68,18 +68,39 @@ The single source of truth is the runtime itself:
 
 ## Delivery — dev introspection API
 
-A minimal **read-only FastAPI dev server** exposes the data to the frontend:
+A minimal **FastAPI dev server** owns a single long-lived runtime (one bus +
+the registered nodes) and exposes it to the frontend:
 
-- `GET /api/topology` → `runtime.describe()` JSON (View 1)
-- `GET /api/traces` → parsed `traces.jsonl` (View 2)
+- `GET  /api/topology` → `runtime.describe()` JSON (View 1)
+- `GET  /api/traces` → live in-memory `trace.captured` rows, grouped into
+  ordered, causally-linked chains (View 2)
+- `POST /api/publish` → publish an event onto the live bus and run it through
+  the real nodes; returns the resulting trace chain. **This is how the frontend
+  triggers a real run** — no seeding.
+- `POST /api/reset` → clear the in-memory traces.
 - CORS for the Next dev origin.
+
+Traces are held **in memory** in the API process (instant, no disk round-trip,
+no staleness) and reset when the process restarts. Headless scripts
+(`demo*.py`) can additionally append to a JSONL file by passing a `trace_log`.
 
 > **Caveat vs. `stack.md`.** `stack.md` defers standing up a backend HTTP
 > service until a venture demands it. This endpoint is a deliberate, narrow
-> exception: it is a **dev-only introspection surface**, *not* the venture
-> runtime or a production API. It must stay read-only and local-only. If we
-> ever want zero backend services, the fallback is a script that writes a
-> static `topology.json` the frontend imports — same data, no server.
+> exception: a **dev-only, local, ephemeral** surface — *not* the venture
+> runtime or a production API. It can now *publish* events, but only onto its
+> own in-process bus; durable, multi-process transport (Redis/Kafka) stays
+> deferred. State resets on restart. If we ever want zero backend services, the
+> fallback is a script that writes a static `topology.json` the frontend
+> imports.
+
+### Why not seed a file?
+
+An earlier iteration wrote a `traces.jsonl` from a separate seed script that the
+API merely read. That meant two processes with two different in-memory buses
+that never shared state — the file was the only bridge, and it went stale. Since
+the API now owns a persistent runtime, the frontend publishes a **real** event
+through the **real** bus and watches the **real** nodes react. Fake *libraries*
+(LLM/search) keep it offline and deterministic — exactly the fake/real seam.
 
 ---
 

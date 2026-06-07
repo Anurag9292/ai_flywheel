@@ -35,11 +35,31 @@ class TraceRecorder:
     through :meth:`record`, so observability is automatic and uniform.
     """
 
-    def __init__(self, bus: EventBus, log_path: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        bus: EventBus,
+        log_path: str | Path | None = None,
+        *,
+        keep_in_memory: bool = False,
+    ) -> None:
         self._bus = bus
         self._path = Path(log_path) if log_path else None
         if self._path is not None:
             self._path.parent.mkdir(parents=True, exist_ok=True)
+        # Optional in-memory sink: when enabled, every captured trace row is
+        # appended here so a long-lived process (the dev API) can read live
+        # traces without a disk round-trip. Resets when the process restarts.
+        self._memory: list[dict[str, Any]] | None = [] if keep_in_memory else None
+
+    @property
+    def traces(self) -> list[dict[str, Any]]:
+        """Live in-memory trace rows (empty if ``keep_in_memory`` is False)."""
+        return list(self._memory) if self._memory is not None else []
+
+    def clear(self) -> None:
+        """Drop in-memory traces (used by the dev API's reset)."""
+        if self._memory is not None:
+            self._memory.clear()
 
     def record(
         self,
@@ -106,6 +126,8 @@ class TraceRecorder:
         }
 
         log.info("trace.captured", **trace)
+        if self._memory is not None:
+            self._memory.append(trace)
         if self._path is not None:
             with self._path.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(trace) + "\n")
