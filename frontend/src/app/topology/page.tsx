@@ -162,9 +162,14 @@ export default function TopologyPage() {
       </header>
 
       {error && (
-        <div className="border-b border-rose-500/40 bg-rose-950/40 px-6 py-3 text-sm text-rose-200">
-          Could not reach the dev API ({error}). Start it with{" "}
-          <code>uv run uvicorn flywheel.devserver.app:app --port 8000</code>.
+        <div className="flex items-center justify-between gap-4 border-b border-amber-500/40 bg-amber-950/30 px-6 py-3 text-sm text-amber-100">
+          <span>⏸ {error}</span>
+          <button
+            onClick={() => void load()}
+            className="shrink-0 rounded-md border border-amber-300/40 px-3 py-1 text-xs hover:bg-amber-500/10"
+          >
+            Retry
+          </button>
         </div>
       )}
 
