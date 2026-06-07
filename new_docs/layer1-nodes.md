@@ -348,12 +348,17 @@ walkthrough. Until then, it doesn't exist.
 ## Status snapshot
 
 - **Date of derivation:** initial pass (PostlineAI walkthrough, Steps 1–9).
-- **Implementation status:** *none.* These are derived requirements, not built
-  code. The next concrete move would be to implement the smallest possible
-  set that gets PostlineAI through Step 4 (the ad test) — that's the minimum
-  proving ground for the event-driven model.
-- **First implementation slice (suggested):** `event-bus`, `trace-recorder`,
-  `llm-gateway`, `linkedin-ads-client`, `analytics-client`,
-  `ad-campaign-runner`, `ad-analytics-collector`, `signal-analyzer`,
-  `founder-notifier`, `slack-client`. ~10 things. Everything else waits until
-  PostlineAI's later steps demand it.
+- **Implementation status (live):** the substrate + first nodes are now built
+  in the `flywheel/` package:
+  - **Substrate:** `event-bus` (`InMemoryEventBus`), `trace-recorder` — done.
+  - **Step 1:** `thesis-tracker` node — done.
+  - **Step 2:** `llm-gateway` (Protocol + fake), `web-search-client`,
+    `semrush-client` (libraries, Protocol + fakes), the `Agent` seam
+    (`SingleCallAgent`), and the `market-scanner` agentic node — done.
+  - Everything else remains a derived requirement, not yet built.
+- **Next slices:** Step 3 (`pain-extractor` + `calendar`/`transcription`
+  clients) and Step 4 (`ad-campaign-runner`, `ad-analytics-collector`,
+  `signal-analyzer`, `founder-notifier` + ads/analytics/slack/email clients).
+- **Visualization:** the live topology + trace-replay views are specified in
+  `visualization.md` and derive their data from `Runtime.describe()` and the
+  `trace.captured` stream.

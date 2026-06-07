@@ -40,7 +40,10 @@ class ThesisTracker:
 
     name = "thesis-tracker"
     version = "0.1.0"
+    kind = "dumb"
     reacts_to = ["evidence.collected"]
+    emits = ["thesis.state.updated"]
+    calls: list[str] = []  # pure bookkeeping; no library calls
 
     def __init__(self) -> None:
         # venture_id -> {assumption -> state}

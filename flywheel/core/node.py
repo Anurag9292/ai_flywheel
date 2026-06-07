@@ -58,11 +58,24 @@ class Node(Protocol):
       see the implementation-swap convention in ``layer1-nodes.md``).
     - ``reacts_to`` is the list of event types that trigger this node.
     - ``handle`` does the work, emitting via the context.
+
+    Introspection metadata (used by ``Runtime.describe()`` for the topology
+    visualization — see ``new_docs/visualization.md``). These are declarative
+    labels only; they do not affect dispatch:
+
+    - ``kind`` — ``"dumb"`` or ``"agentic"``.
+    - ``emits`` — event types the node emits.
+    - ``calls`` — library tools / gateways the node calls.
+
+    They are optional on a node object; ``describe()`` reads them defensively.
     """
 
     name: str
     version: str
     reacts_to: list[str]
+    kind: str
+    emits: list[str]
+    calls: list[str]
 
     def handle(self, event: Event, ctx: NodeContext) -> None: ...
 
@@ -109,3 +122,85 @@ class Runtime:
     @property
     def nodes(self) -> list[Node]:
         return list(self._nodes)
+
+    def describe(self) -> dict[str, Any]:
+        """Return a code-derived topology graph of the registered nodes.
+
+        This is the single source of truth for the visualization
+        (``new_docs/visualization.md``). It walks every registered node and its
+        declared metadata and produces:
+
+        - ``nodes``    — name, version, kind, reacts_to, emits, calls
+        - ``libraries``— the set of library tools referenced via ``calls``
+        - ``events``   — every event type seen, with who emits / reacts to it
+        - ``edges``    — ``reacts`` (event→node), ``emits`` (node→event),
+                          ``calls`` (node→library)
+        - ``substrate``— the always-on trace-recorder that wraps every node
+        - ``lint``     — orphan events (emitted but nothing reacts; reacted-to
+                          but nothing emits) — a cheap correctness check
+
+        It is pure (no side effects) and safe to call at any time.
+        """
+        nodes: list[dict[str, Any]] = []
+        edges: list[dict[str, Any]] = []
+        libraries: set[str] = set()
+        emitters: dict[str, list[str]] = {}
+        reactors: dict[str, list[str]] = {}
+
+        for node in self._nodes:
+            reacts_to = list(getattr(node, "reacts_to", []))
+            emits = list(getattr(node, "emits", []))
+            calls = list(getattr(node, "calls", []))
+            nodes.append(
+                {
+                    "name": node.name,
+                    "version": node.version,
+                    "kind": getattr(node, "kind", "dumb"),
+                    "reacts_to": reacts_to,
+                    "emits": emits,
+                    "calls": calls,
+                }
+            )
+            for event_type in reacts_to:
+                reactors.setdefault(event_type, []).append(node.name)
+                edges.append(
+                    {"source": event_type, "target": node.name, "kind": "reacts"}
+                )
+            for event_type in emits:
+                emitters.setdefault(event_type, []).append(node.name)
+                edges.append(
+                    {"source": node.name, "target": event_type, "kind": "emits"}
+                )
+            for lib in calls:
+                libraries.add(lib)
+                edges.append({"source": node.name, "target": lib, "kind": "calls"})
+
+        all_event_types = sorted(set(emitters) | set(reactors))
+        events = [
+            {
+                "type": t,
+                "emitted_by": sorted(emitters.get(t, [])),
+                "reacted_by": sorted(reactors.get(t, [])),
+            }
+            for t in all_event_types
+        ]
+
+        lint = {
+            # Emitted by some node but nothing subscribes (a dead end).
+            "orphan_emitted": [
+                t for t in all_event_types if emitters.get(t) and not reactors.get(t)
+            ],
+            # Reacted to but no registered node emits it (relies on external/seed events).
+            "unproduced_reacted": [
+                t for t in all_event_types if reactors.get(t) and not emitters.get(t)
+            ],
+        }
+
+        return {
+            "nodes": nodes,
+            "libraries": sorted(libraries),
+            "events": events,
+            "edges": edges,
+            "substrate": {"name": "trace-recorder", "wraps": [n["name"] for n in nodes]},
+            "lint": lint,
+        }
