@@ -95,6 +95,9 @@ class TraceRecorder:
             "trigger_event_id": triggering_event.event_id,
             "trigger_type": triggering_event.type,
             "emitted_types": [e.type for e in emitted],
+            # Event ids the node emitted — lets the timeline link this step's
+            # output to the next step's trigger (parent->child causality).
+            "emitted_event_ids": [e.event_id for e in emitted],
             "latency_ms": round(latency_ms, 3),
             # Cost is a placeholder until the llm-gateway lands (Step 2) and can
             # report real token cost through the context.

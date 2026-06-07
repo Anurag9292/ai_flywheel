@@ -19,18 +19,21 @@ import {
   fetchTraces,
   type Topology,
   type TraceChain,
+  type TraceRow,
 } from "@/lib/topology-api";
 
 const nodeTypes = { flow: FlowNode };
+const PLAY_INTERVAL_MS = 1400;
 
 export default function TopologyPage() {
   const [topo, setTopo] = useState<Topology | null>(null);
   const [chains, setChains] = useState<TraceChain[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // Trace-replay state: which chain is selected and how far we've stepped.
+  // Replay state.
   const [selectedChain, setSelectedChain] = useState<string | null>(null);
   const [step, setStep] = useState(0);
+  const [playing, setPlaying] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -41,36 +44,81 @@ export default function TopologyPage() {
         (c.steps ?? []).some((s) => s.node),
       );
       setChains(filtered);
+      // Auto-select the most recent run so there's always something to watch.
+      if (filtered.length > 0 && selectedChain === null) {
+        setSelectedChain(filtered[0].correlation_id);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, []);
+  }, [selectedChain]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const { nodes: baseNodes, edges } = useMemo<{ nodes: Node[]; edges: Edge[] }>(
-    () => (topo ? buildFlow(topo) : { nodes: [], edges: [] }),
-    [topo],
-  );
+  const { nodes: baseNodes, edges: baseEdges } = useMemo<{
+    nodes: Node[];
+    edges: Edge[];
+  }>(() => (topo ? buildFlow(topo) : { nodes: [], edges: [] }), [topo]);
 
-  // For trace replay: the node that fired at the current step is highlighted.
   const activeChain = chains.find((c) => c.correlation_id === selectedChain);
-  const activeNodeName =
-    activeChain && step < activeChain.steps.length
-      ? activeChain.steps[step].node
-      : null;
+  const steps = activeChain?.steps ?? [];
+  const current: TraceRow | undefined = steps[step];
 
+  // Auto-play: advance one step on a timer, stop at the end.
+  useEffect(() => {
+    if (!playing || !activeChain) return;
+    if (step >= steps.length - 1) {
+      setPlaying(false);
+      return;
+    }
+    const id = setTimeout(() => setStep((s) => s + 1), PLAY_INTERVAL_MS);
+    return () => clearTimeout(id);
+  }, [playing, step, steps.length, activeChain]);
+
+  // Highlight the firing node for the current step.
+  const activeNodeName = current?.node ?? null;
   const nodes = useMemo<Node[]>(
     () =>
-      baseNodes.map((n) =>
-        n.id === `node:${activeNodeName}`
-          ? { ...n, data: { ...n.data, active: true } }
-          : { ...n, data: { ...n.data, active: false } },
-      ),
+      baseNodes.map((n) => ({
+        ...n,
+        data: { ...n.data, active: n.id === `node:${activeNodeName}` },
+      })),
     [baseNodes, activeNodeName],
   );
+
+  // Highlight the edges involved in the current step: trigger event -> node,
+  // and node -> each emitted event.
+  const edges = useMemo<Edge[]>(() => {
+    if (!current) return baseEdges;
+    const hot = new Set<string>();
+    hot.add(`event:${current.trigger_type}->node:${current.node}`); // reacts
+    for (const t of current.emitted_types) {
+      hot.add(`node:${current.node}->event:${t}`); // emits
+    }
+    return baseEdges.map((e) => {
+      const key = `${e.source}->${e.target}`;
+      const isHot = hot.has(key);
+      return {
+        ...e,
+        animated: isHot ? true : e.animated,
+        style: {
+          ...e.style,
+          stroke: isHot ? "rgba(251,191,36,1)" : e.style?.stroke,
+          strokeWidth: isHot ? 3 : e.style?.strokeWidth,
+        },
+      };
+    });
+  }, [baseEdges, current]);
+
+  const t0 = steps[0]?.captured_at ? Date.parse(steps[0].captured_at) : 0;
+
+  const selectChain = (cid: string) => {
+    setSelectedChain(cid);
+    setStep(0);
+    setPlaying(false);
+  };
 
   return (
     <div className="flex h-screen w-screen flex-col bg-[#0a0a14] text-white">
@@ -97,16 +145,17 @@ export default function TopologyPage() {
         </div>
       )}
 
-      {topo && (topo.lint.orphan_emitted.length > 0 ||
-        topo.lint.unproduced_reacted.length > 0) && (
-        <div className="border-b border-amber-500/30 bg-amber-950/30 px-6 py-2 text-xs text-amber-200">
-          <span className="font-semibold">Lint:</span>{" "}
-          {topo.lint.orphan_emitted.length > 0 &&
-            `orphan emitted: ${topo.lint.orphan_emitted.join(", ")}. `}
-          {topo.lint.unproduced_reacted.length > 0 &&
-            `reacted but not produced here: ${topo.lint.unproduced_reacted.join(", ")}.`}
-        </div>
-      )}
+      {topo &&
+        (topo.lint.orphan_emitted.length > 0 ||
+          topo.lint.unproduced_reacted.length > 0) && (
+          <div className="border-b border-amber-500/30 bg-amber-950/30 px-6 py-2 text-xs text-amber-200">
+            <span className="font-semibold">Lint:</span>{" "}
+            {topo.lint.orphan_emitted.length > 0 &&
+              `orphan emitted: ${topo.lint.orphan_emitted.join(", ")}. `}
+            {topo.lint.unproduced_reacted.length > 0 &&
+              `reacted but not produced here: ${topo.lint.unproduced_reacted.join(", ")}.`}
+          </div>
+        )}
 
       <div className="flex min-h-0 flex-1">
         <div className="min-w-0 flex-1">
@@ -119,102 +168,181 @@ export default function TopologyPage() {
           >
             <Background variant={BackgroundVariant.Dots} gap={24} color="#1e293b" />
             <Controls />
-            <MiniMap pannable zoomable className="!bg-slate-900" />
+            <MiniMap
+              pannable
+              zoomable
+              maskColor="rgba(10,10,20,0.7)"
+              style={{ background: "#0d1117" }}
+              nodeColor={(n) =>
+                (n.data as { kind?: string }).kind === "event"
+                  ? "#d946ef"
+                  : (n.data as { kind?: string }).kind === "node_agentic"
+                    ? "#10b981"
+                    : (n.data as { kind?: string }).kind === "node_dumb"
+                      ? "#3b82f6"
+                      : "#64748b"
+              }
+            />
           </ReactFlow>
         </div>
 
-        {/* Trace replay panel (View 2). */}
-        <aside className="w-80 shrink-0 overflow-y-auto border-l border-white/10 bg-[#0d0d1a] p-4">
-          <h2 className="mb-2 text-sm font-semibold">Trace replay</h2>
-          <p className="mb-3 text-xs text-slate-400">
-            Pick a recorded run (grouped by correlation id) and step through what
-            actually fired.
-          </p>
-
-          {chains.length === 0 && (
-            <p className="text-xs text-slate-500">
-              No traces yet. Run a demo (e.g.{" "}
-              <code>uv run python demo_step2.py</code>) then Refresh.
+        {/* Chronological timeline / replay (View 2). */}
+        <aside className="flex w-96 shrink-0 flex-col border-l border-white/10 bg-[#0d0d1a]">
+          <div className="border-b border-white/10 p-4">
+            <h2 className="mb-1 text-sm font-semibold">Run timeline</h2>
+            <p className="text-xs text-slate-400">
+              Each run = one published event + every reaction it caused, in
+              chronological order.
             </p>
-          )}
+          </div>
 
-          <ul className="space-y-1">
-            {chains.map((c) => (
-              <li key={c.correlation_id}>
+          {/* Run picker. */}
+          <div className="border-b border-white/10 p-3">
+            {chains.length === 0 && (
+              <p className="text-xs text-slate-500">
+                No runs yet. Seed one with{" "}
+                <code>uv run python seed_traces.py</code> then Refresh.
+              </p>
+            )}
+            <div className="flex flex-wrap gap-1.5">
+              {chains.map((c) => (
                 <button
-                  onClick={() => {
-                    setSelectedChain(c.correlation_id);
-                    setStep(0);
-                  }}
-                  className={`w-full rounded-lg border px-2 py-1.5 text-left text-xs ${
+                  key={c.correlation_id}
+                  onClick={() => selectChain(c.correlation_id)}
+                  className={`rounded-md border px-2 py-1 text-left text-[11px] ${
                     selectedChain === c.correlation_id
                       ? "border-amber-300/60 bg-amber-500/10"
                       : "border-white/10 hover:bg-white/5"
                   }`}
                 >
-                  <div className="font-mono text-[10px] text-slate-400">
-                    {c.correlation_id.slice(0, 12)}…
-                  </div>
-                  <div className="text-slate-200">
-                    {c.steps.length} step{c.steps.length === 1 ? "" : "s"} ·{" "}
-                    {c.steps[0]?.trigger_type}
-                  </div>
+                  <span className="font-mono text-slate-400">
+                    {c.correlation_id.slice(0, 8)}
+                  </span>{" "}
+                  <span className="text-slate-200">
+                    {c.steps.length} step{c.steps.length === 1 ? "" : "s"}
+                  </span>
                 </button>
-              </li>
-            ))}
-          </ul>
+              ))}
+            </div>
+          </div>
 
+          {/* Playback controls. */}
           {activeChain && (
-            <div className="mt-4 rounded-lg border border-white/10 p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs text-slate-400">
-                  Step {step + 1} / {activeChain.steps.length}
-                </span>
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => setStep((s) => Math.max(0, s - 1))}
-                    disabled={step === 0}
-                    className="rounded border border-white/15 px-2 py-0.5 text-xs disabled:opacity-40"
-                  >
-                    ‹
-                  </button>
-                  <button
-                    onClick={() =>
-                      setStep((s) => Math.min(activeChain.steps.length - 1, s + 1))
-                    }
-                    disabled={step >= activeChain.steps.length - 1}
-                    className="rounded border border-white/15 px-2 py-0.5 text-xs disabled:opacity-40"
-                  >
-                    ›
-                  </button>
-                </div>
-              </div>
-              {(() => {
-                const s = activeChain.steps[step];
-                return (
-                  <div className="space-y-1 text-xs">
-                    <Row label="node" value={s.node} />
-                    <Row label="reacted to" value={s.trigger_type} />
-                    <Row label="emitted" value={s.emitted_types?.join(", ") || "—"} />
-                    <Row label="latency" value={`${s.latency_ms} ms`} />
-                    <Row label="cost" value={`$${s.cost_usd}`} />
-                    {s.error && <Row label="error" value={s.error} />}
-                  </div>
-                );
-              })()}
+            <div className="flex items-center gap-2 border-b border-white/10 p-3">
+              <button
+                onClick={() => {
+                  if (step >= steps.length - 1) setStep(0);
+                  setPlaying((p) => !p);
+                }}
+                className="rounded-md border border-white/15 px-3 py-1 text-xs hover:bg-white/10"
+              >
+                {playing ? "⏸ Pause" : "▶ Play"}
+              </button>
+              <button
+                onClick={() => {
+                  setPlaying(false);
+                  setStep((s) => Math.max(0, s - 1));
+                }}
+                disabled={step === 0}
+                className="rounded-md border border-white/15 px-2 py-1 text-xs disabled:opacity-40"
+              >
+                ‹ Prev
+              </button>
+              <button
+                onClick={() => {
+                  setPlaying(false);
+                  setStep((s) => Math.min(steps.length - 1, s + 1));
+                }}
+                disabled={step >= steps.length - 1}
+                className="rounded-md border border-white/15 px-2 py-1 text-xs disabled:opacity-40"
+              >
+                Next ›
+              </button>
+              <button
+                onClick={() => {
+                  setPlaying(false);
+                  setStep(0);
+                }}
+                className="ml-auto rounded-md border border-white/15 px-2 py-1 text-xs hover:bg-white/10"
+              >
+                ⟲ Reset
+              </button>
             </div>
           )}
+
+          {/* The chronological steps. */}
+          <ol className="min-h-0 flex-1 overflow-y-auto p-3">
+            {steps.map((s, i) => {
+              const dt = s.captured_at ? Date.parse(s.captured_at) - t0 : 0;
+              const isActive = i === step;
+              const past = i < step;
+              return (
+                <li key={i} className="relative pl-5">
+                  {/* connector line */}
+                  {i < steps.length - 1 && (
+                    <span className="absolute left-[7px] top-5 h-full w-px bg-white/15" />
+                  )}
+                  <button
+                    onClick={() => {
+                      setPlaying(false);
+                      setStep(i);
+                    }}
+                    className={`mb-2 block w-full rounded-lg border p-2.5 text-left transition-all ${
+                      isActive
+                        ? "border-amber-300/70 bg-amber-500/10 shadow-[0_0_18px_rgba(251,191,36,0.25)]"
+                        : past
+                          ? "border-white/10 bg-white/[0.03] opacity-80"
+                          : "border-white/10 hover:bg-white/5"
+                    }`}
+                  >
+                    <span
+                      className={`absolute left-0 top-3 h-3.5 w-3.5 rounded-full border-2 ${
+                        isActive
+                          ? "border-amber-300 bg-amber-400"
+                          : past
+                            ? "border-emerald-400 bg-emerald-500"
+                            : "border-slate-500 bg-slate-800"
+                      }`}
+                    />
+                    <div className="mb-1 flex items-center justify-between">
+                      <span className="font-mono text-[10px] text-slate-400">
+                        t+{dt}ms
+                      </span>
+                      <span className="flex gap-1">
+                        {s.is_start && (
+                          <span className="rounded bg-sky-500/20 px-1 text-[9px] font-semibold text-sky-200">
+                            START
+                          </span>
+                        )}
+                        {s.is_end && (
+                          <span className="rounded bg-rose-500/20 px-1 text-[9px] font-semibold text-rose-200">
+                            END
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-400">
+                      on <span className="font-mono text-fuchsia-300">{s.trigger_type}</span>
+                    </div>
+                    <div className="text-sm font-medium text-white">{s.node}</div>
+                    <div className="text-[11px] text-slate-400">
+                      emits{" "}
+                      <span className="font-mono text-emerald-300">
+                        {s.emitted_types.length ? s.emitted_types.join(", ") : "—"}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex gap-3 text-[10px] text-slate-500">
+                      <span>{s.latency_ms} ms</span>
+                      <span>${s.cost_usd}</span>
+                      {s.error && <span className="text-rose-400">error</span>}
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
         </aside>
       </div>
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between gap-2">
-      <span className="text-slate-500">{label}</span>
-      <span className="text-right font-mono text-slate-200">{value}</span>
     </div>
   );
 }

@@ -65,3 +65,41 @@ def test_emitted_event_inherits_correlation_id(tmp_path) -> None:
     bus.publish(evidence)
 
     assert updates[0].correlation_id == evidence.correlation_id
+
+
+def test_reacts_to_market_landscape_as_evidence(tmp_path) -> None:
+    # Reuse by subscription: a summarized landscape naming a gap supports the
+    # 'market_gap_exists' assumption.
+    bus, tracker = _runtime(tmp_path)
+    updates: list[Event] = []
+    bus.subscribe("thesis.state.updated", updates.append)
+
+    bus.publish(Event(
+        type="market.landscape.summarized",
+        venture_id="postlineai",
+        payload={"summary": "a clear gap exists at $499", "competitors": []},
+    ))
+
+    assert tracker.state_for("postlineai") == {"market_gap_exists": SUPPORTED}
+    assert updates[0].payload["evidence_from"] == "market.landscape.summarized"
+
+
+def test_signal_verdict_kill_contradicts(tmp_path) -> None:
+    bus, tracker = _runtime(tmp_path)
+    bus.publish(Event(
+        type="signal.verdict",
+        venture_id="postlineai",
+        payload={"verdict": "kill"},
+    ))
+    assert tracker.state_for("postlineai") == {"demand_validated": CONTRADICTED}
+
+
+def test_signal_verdict_weak_is_noop(tmp_path) -> None:
+    bus, tracker = _runtime(tmp_path)
+    updates: list[Event] = []
+    bus.subscribe("thesis.state.updated", updates.append)
+    bus.publish(Event(
+        type="signal.verdict", venture_id="postlineai", payload={"verdict": "weak"}
+    ))
+    assert updates == []
+    assert tracker.state_for("postlineai") == {}

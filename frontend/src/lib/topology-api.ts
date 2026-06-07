@@ -54,9 +54,15 @@ export interface TraceRow {
   trigger_event_id: string;
   trigger_type: string;
   emitted_types: string[];
+  emitted_event_ids: string[];
   latency_ms: number;
   cost_usd: number;
   error: string | null;
+  // Added by the API's chain builder:
+  seq: number;
+  parent_step: number | null;
+  is_start: boolean;
+  is_end: boolean;
 }
 
 export interface TraceChain {
