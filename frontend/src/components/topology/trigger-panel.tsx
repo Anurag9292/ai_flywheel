@@ -49,6 +49,10 @@ const EVENT_CATALOG: Record<
     reacts: "subscription-manager (activates + charges)",
     payload: { customer_id: "c1", plan: "trial", amount_usd: 299 },
   },
+  "survey.requested": {
+    reacts: "customer-survey → signal-analyzer / thesis-tracker → founder-notifier",
+    payload: { customer_id: "c1", nps: 9, leads: 2, rubric: "happy enough to renew?" },
+  },
   "evidence.collected": {
     reacts: "thesis-tracker → founder-notifier",
     payload: { assumption: "willing_to_pay_499", supports: true },
@@ -94,6 +98,7 @@ const PRESETS: { label: string; type: string; hint: string }[] = [
   { label: "Run the ad test", type: "campaign.requested", hint: "ads → analyze → decide loop" },
   { label: "Customer sends input", type: "inbound.received", hint: "drafts a post, parks for review" },
   { label: "New subscription", type: "subscription.requested", hint: "subscription-manager" },
+  { label: "Send NPS survey", type: "survey.requested", hint: "survey → signal → thesis" },
   { label: "Submit evidence (supports)", type: "evidence.collected", hint: "thesis-tracker" },
   { label: "Signal verdict: kill", type: "signal.verdict", hint: "thesis-tracker (contradicts)" },
 ];
