@@ -11,23 +11,42 @@ const EVENT_CATALOG: Record<
   { payload: Record<string, unknown>; reacts: string }
 > = {
   "research.requested": {
-    reacts: "market-scanner → thesis-tracker",
+    reacts: "market-scanner → thesis-tracker → founder-notifier",
     payload: {
       thesis: "B2B founders will pay $499/mo for AI LinkedIn ghostwriting",
       keywords: ["linkedin ghostwriter", "b2b founder content"],
       competitor_query: "AI LinkedIn ghostwriting competitors",
     },
   },
+  "transcript.captured": {
+    reacts: "pain-extractor → thesis-tracker → founder-notifier",
+    payload: {
+      transcript:
+        "I know I should post on LinkedIn but I have no time, and when I do post it gets no engagement.",
+      speaker: "Founder A",
+    },
+  },
+  "campaign.requested": {
+    reacts:
+      "ad-campaign-runner → ad-analytics-collector → signal-analyzer → thesis-tracker / founder-notifier",
+    payload: {
+      platform: "linkedin",
+      name: "ghostwriting waitlist",
+      budget_usd: 200,
+      landing_page: "/postlineai",
+      rubric: "would pay $499/mo",
+    },
+  },
   "evidence.collected": {
-    reacts: "thesis-tracker",
+    reacts: "thesis-tracker → founder-notifier",
     payload: { assumption: "willing_to_pay_499", supports: true },
   },
   "signal.verdict": {
-    reacts: "thesis-tracker",
+    reacts: "thesis-tracker → founder-notifier",
     payload: { verdict: "kill" },
   },
   "market.landscape.summarized": {
-    reacts: "thesis-tracker",
+    reacts: "thesis-tracker → founder-notifier",
     payload: {
       summary: "a clear gap exists at $499",
       competitors: [{ name: "Taplio", pricing: "$39/mo" }],
@@ -35,11 +54,16 @@ const EVENT_CATALOG: Record<
     },
   },
   "pain.extracted": {
-    reacts: "thesis-tracker",
-    payload: { pains: ["no time to post", "posts get no engagement"] },
+    reacts: "thesis-tracker → founder-notifier",
+    payload: {
+      pains: [
+        { pain: "no time to post", frequency: 8, intensity: 0.8 },
+        { pain: "posts get no engagement", frequency: 5, intensity: 0.7 },
+      ],
+    },
   },
   "survey.responded": {
-    reacts: "thesis-tracker",
+    reacts: "thesis-tracker → founder-notifier",
     payload: { nps: 9, comment: "saves me hours" },
   },
 };
@@ -54,6 +78,8 @@ function examplePayload(type: string): string {
 // Curated one-click scenarios for the events that currently produce runs.
 const PRESETS: { label: string; type: string; hint: string }[] = [
   { label: "Run desk research", type: "research.requested", hint: "market-scanner → thesis-tracker" },
+  { label: "Capture a discovery call", type: "transcript.captured", hint: "pain-extractor → thesis-tracker" },
+  { label: "Run the ad test", type: "campaign.requested", hint: "ads → analyze → decide loop" },
   { label: "Submit evidence (supports)", type: "evidence.collected", hint: "thesis-tracker" },
   { label: "Signal verdict: kill", type: "signal.verdict", hint: "thesis-tracker (contradicts)" },
 ];

@@ -22,7 +22,12 @@ from flywheel.core.substrate import TraceRecorder
 from flywheel.libraries.llm_gateway import FakeLLMGateway
 from flywheel.libraries.semrush_client import FakeSemrushClient, KeywordVolume
 from flywheel.libraries.web_search_client import FakeWebSearchClient, SearchResult
+from flywheel.nodes.ad_analytics_collector import AdAnalyticsCollector
+from flywheel.nodes.ad_campaign_runner import AdCampaignRunner
+from flywheel.nodes.founder_notifier import FounderNotifier
 from flywheel.nodes.market_scanner import MarketMap, MarketScanner
+from flywheel.nodes.pain_extractor import PainExtractor, PainReport
+from flywheel.nodes.signal_analyzer import SignalAnalyzer, SignalVerdict
 from flywheel.nodes.thesis_tracker import ThesisTracker
 
 DEFAULT_TRACE_LOG = Path("traces.jsonl")
@@ -66,6 +71,38 @@ def _demo_market_scanner() -> MarketScanner:
     )
 
 
+def _demo_pain_extractor() -> PainExtractor:
+    """A pain-extractor whose fake gateway returns rich, deterministic pains."""
+    gateway = FakeLLMGateway()
+    gateway.register(
+        PainReport.__name__,
+        lambda prompt: {
+            "pains": [
+                {"pain": "no time to write posts", "frequency": 8, "intensity": 0.8},
+                {"pain": "posts get no engagement", "frequency": 5, "intensity": 0.7},
+                {"pain": "don't know what to say", "frequency": 4, "intensity": 0.6},
+            ]
+        },
+    )
+    return PainExtractor(gateway=gateway)
+
+
+def _demo_signal_analyzer() -> SignalAnalyzer:
+    """A signal-analyzer whose fake gateway returns a strong verdict so the
+    Step-4 decision chain runs end-to-end deterministically.
+    """
+    gateway = FakeLLMGateway()
+    gateway.register(
+        SignalVerdict.__name__,
+        lambda prompt: {
+            "verdict": "strong",
+            "confidence": 0.82,
+            "explanation": "CPL well under target and signups above the bar for $499/mo.",
+        },
+    )
+    return SignalAnalyzer(gateway=gateway)
+
+
 def build_runtime(
     trace_log: Path | None = None,
     *,
@@ -85,7 +122,15 @@ def build_runtime(
     )
     runtime = Runtime(bus, recorder)
 
+    # Step 1–2: research + thesis tracking.
     runtime.register(_demo_market_scanner())
     runtime.register(ThesisTracker())
+    # Step 3: discovery → pain extraction (feeds thesis-tracker by subscription).
+    runtime.register(_demo_pain_extractor())
+    # Step 4: the ad-test decision loop.
+    runtime.register(AdCampaignRunner())
+    runtime.register(AdAnalyticsCollector())
+    runtime.register(_demo_signal_analyzer())
+    runtime.register(FounderNotifier())
 
     return runtime, bus, recorder
