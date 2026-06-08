@@ -1,0 +1,63 @@
+# PostlineAI — the venture definition (Layer 2).
+#
+# A venture is a declarative composition of Layer 1 nodes, organized into
+# FUNCTIONS (departments). Functions are groupings for composition + legibility;
+# they do NOT orchestrate — events still flow node->node via the bus. A node may
+# appear in more than one function (e.g. signal-analyzer judges both ad and
+# survey signals).
+#
+# This file reproduces exactly the runtime that build_runtime() used to hardcode
+# (Steps 1-6). The agentic nodes default to their canned fake-gateway variants so
+# triggered runs stay deterministic.
+
+name: postlineai
+description: >-
+  B2B LinkedIn ghostwriting for founders/execs. Turns 10 minutes of voice notes
+  a week into a consistent, on-brand LinkedIn presence.
+
+domain:
+  icp: "seed/Series-A B2B SaaS founders, 50-500 employees"
+  riskiest_assumption: "founders will pay $499/mo for ghostwritten posts"
+  price_hypothesis_usd: 499
+
+functions:
+  - name: thesis
+    description: Track the venture thesis as evidence arrives, and alert the founder.
+    nodes:
+      - name: thesis-tracker
+      - name: founder-notifier
+
+  - name: market-exploration
+    description: Desk research + the ad-test demand loop (validate before building).
+    nodes:
+      - name: market-scanner
+      - name: ad-campaign-runner
+      - name: ad-analytics-collector
+      - name: signal-analyzer        # shared with customer-success
+
+  - name: discovery
+    description: Customer conversations -> extracted pain.
+    nodes:
+      - name: pain-extractor
+
+  - name: gtm
+    description: The Wizard-of-Oz product flow — capture input, draft, review, publish.
+    nodes:
+      - name: input-intake
+      - name: post-drafter
+        config:
+          impl: human               # Step-7 swaps this to agent-v1 (one line)
+      - name: human-review-queue
+      - name: post-scheduler
+
+  - name: billing
+    description: Subscriptions and payments.
+    nodes:
+      - name: subscription-manager
+
+  - name: customer-success
+    description: Measure engagement + satisfaction; feed signals back to the thesis.
+    nodes:
+      - name: post-analytics-collector
+      - name: customer-survey
+      - name: signal-analyzer        # shared with market-exploration

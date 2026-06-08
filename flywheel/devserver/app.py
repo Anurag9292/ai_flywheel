@@ -32,7 +32,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from flywheel.core.events import Event
-from flywheel.devserver.topology import build_runtime, find_review_queue
+from flywheel.devserver.topology import (
+    build_runtime,
+    find_review_queue,
+    load_default_venture,
+)
+from flywheel.venture.view import function_view, lint_venture
 
 app = FastAPI(
     title="AI Flywheel — Dev Introspection",
@@ -50,6 +55,8 @@ app.add_middleware(
 # One long-lived runtime for the process. Its bus + nodes persist across
 # requests, and traces are held in memory so /api/traces reads live state.
 _runtime, _bus, _recorder = build_runtime(keep_in_memory=True)
+# The venture definition that produced this runtime (Layer 2 composition).
+_venture = load_default_venture()
 # The human-review-queue holds parked items needing founder approval (Step 5).
 _review_queue = find_review_queue(_runtime)
 
@@ -63,6 +70,24 @@ def health() -> dict[str, str]:
 def topology() -> dict[str, Any]:
     """The code-derived topology graph."""
     return _runtime.describe()
+
+
+@app.get("/api/venture")
+def venture() -> dict[str, Any]:
+    """The Layer 2 venture composition: domain, functions, and venture lint.
+
+    ``functions`` groups the live topology by function (each with the events it
+    owns as inputs/outputs); ``lint`` cross-checks the venture's intended
+    composition against the actual code-derived graph.
+    """
+    describe = _runtime.describe()
+    return {
+        "name": _venture.name,
+        "description": _venture.description,
+        "domain": _venture.domain,
+        "functions": function_view(_venture, describe),
+        "lint": lint_venture(_venture, describe),
+    }
 
 
 def _build_chain(correlation_id: str, steps: list[dict[str, Any]]) -> dict[str, Any]:

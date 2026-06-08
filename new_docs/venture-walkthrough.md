@@ -467,10 +467,11 @@ right next things to think about — not now, but after PostlineAI is real.
    smells more like Layer 3. Likely answer: Layer 3 *proposes* tuning; Layer 1
    has a `prompt-store` (not yet derived) that *applies* approved tunings.
    Defer until a second venture forces the question.
-2. **What does `topology.yaml` actually look like?** We've described it
-   abstractly. The first concrete schema should be designed only when
-   PostlineAI's topology is real enough to need persistence (probably at
-   Step 4 in code).
+2. **What does `topology.yaml` actually look like?** ✅ **Resolved.** Now that
+   PostlineAI's topology is real (Steps 1–6, 14 nodes), it's a concrete venture
+   file: `ventures/postlineai.yaml`, organized into **functions** (declarative
+   node groupings — *not* orchestrators). The runtime is built from it. See
+   `venture-file.md`.
 3. **State and idempotency.** Many nodes are timer-driven
    (`ad-analytics-collector`, `customer-survey`). What guarantees we don't
    double-bill / double-publish on retries? Defer until the first such bug
