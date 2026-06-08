@@ -149,14 +149,37 @@ def test_wizard_of_oz_park_then_approve_resume() -> None:
     assert len(mine) == 1
     parked_id = mine[0]["event_id"]
 
+    parked_correlation = mine[0]["correlation_id"]
+    # The park run and the resume run share one correlation id.
+    assert r1.json()["correlation_id"] == parked_correlation
+
     # Run 2: founder approves with the real text -> chain resumes and publishes.
     r2 = client.post(
         "/api/review/approve",
         json={"event_id": parked_id, "draft": "The real ghostwritten post."},
     )
-    nodes2 = [s["node"] for s in r2.json()["chain"]["steps"]]
-    # human-review-queue re-emits post.approved -> post-scheduler publishes.
-    assert nodes2 == ["human-review-queue", "post-scheduler"]
+    body2 = r2.json()
+    # The approval reuses the parked correlation id so the two runs are stitched.
+    assert body2["correlation_id"] == parked_correlation
+    nodes2 = [s["node"] for s in body2["chain"]["steps"]]
+    # The merged chain shows the full draft->park->approve->publish story:
+    # input-intake -> post-drafter -> human-review-queue (park) ->
+    # human-review-queue (resume) -> post-scheduler.
+    assert nodes2 == [
+        "input-intake",
+        "post-drafter",
+        "human-review-queue",
+        "human-review-queue",
+        "post-scheduler",
+    ]
+    assert body2["chain"]["steps"][-1]["is_end"] is True
+    assert "post.published" in body2["chain"]["steps"][-1]["emitted_types"]
+
+    # /api/traces groups it as a SINGLE chain (one correlation id), not two.
+    chains = client.get("/api/traces").json()["chains"]
+    matching = [c for c in chains if c["correlation_id"] == parked_correlation]
+    assert len(matching) == 1
+    assert len(matching[0]["steps"]) == 5
 
     # Item is no longer pending after approval.
     still = [p for p in client.get("/api/review").json()["pending"] if p["event_id"] == parked_id]
