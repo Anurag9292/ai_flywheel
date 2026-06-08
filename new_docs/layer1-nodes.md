@@ -348,7 +348,7 @@ walkthrough. Until then, it doesn't exist.
 ## Status snapshot
 
 - **Date of derivation:** initial pass (PostlineAI walkthrough, Steps 1–9).
-- **Implementation status (live):** the substrate + Steps 1–4 are now built in
+- **Implementation status (live):** the substrate + Steps 1–5 are now built in
   the `flywheel/` package:
   - **Substrate:** `event-bus` (`InMemoryEventBus`), `trace-recorder` — done.
   - **Step 1:** `thesis-tracker` node — done.
@@ -366,12 +366,27 @@ walkthrough. Until then, it doesn't exist.
     {thesis-tracker, founder-notifier}` decision loop.
   - **Deferred within Step 4:** the `tick.daily` timer trigger on
     `ad-analytics-collector` (no timer substrate yet — see node TODO).
-  - Everything from Step 5 onward remains a derived requirement, not yet built.
-- **Next slices:** Step 5 (Wizard-of-Oz: `input-intake`, `post-drafter`,
-  `human-review-queue`, `post-scheduler`, `subscription-manager` + inbound /
-  linkedin-posting / billing clients) — which is also where durable state,
-  Temporal, and `topology.yaml` first arrive per `stack.md`.
+  - **Step 5 (Wizard-of-Oz):** `inbound-collector`, `linkedin-posting-client`,
+    `billing-client` (libraries, Protocol + fakes), and the `input-intake`,
+    `post-drafter` (human impl via a `Drafter` seam), `human-review-queue`,
+    `post-scheduler`, `subscription-manager` nodes — done. The Wizard-of-Oz
+    flow runs `inbound.received → input.captured → post.drafted (requires_human)
+    → [parked]`, and on a separate `review.approved` the queue re-emits
+    `post.approved → post.scheduled → post.published` under the *same*
+    correlation id (park-and-resume across two runs).
+  - **Deferred within Step 5 (documented):** durable parking / venture state
+    (Postgres), durable waits (Temporal), the `tick.minute` publish timer
+    (approved posts publish immediately for now), and `topology.yaml` — all per
+    `stack.md`. The `post-drafter` impl binding is reflected in the node version
+    (`0.1.0-human`); swapping to `agent-v1` (Step 7) won't change the event
+    contract.
+  - Everything from Step 6 onward remains a derived requirement, not yet built.
+- **Next slices:** Step 6 (`post-analytics-collector`, `customer-survey`; reuse
+  `signal-analyzer` via a stage rubric) then Step 7 (the real `post-drafter`
+  agent + `voice-profile-builder`, where embeddings/pgvector first arrive).
 - **Visualization:** the live topology + trace-replay views are specified in
   `visualization.md` and derive their data from `Runtime.describe()` and the
-  `trace.captured` stream. All Steps 1–4 nodes are registered in the dev
-  runtime (`flywheel/devserver/topology.py`) and triggerable from `/topology`.
+  `trace.captured` stream. All Steps 1–5 nodes are registered in the dev
+  runtime (`flywheel/devserver/topology.py`) and triggerable from `/topology`;
+  the human-review queue is visible/approvable via `/api/review` and the
+  `/topology` review panel.
