@@ -101,6 +101,9 @@ the whole game.
    arrival schedule*: which infrastructure shows up at which PostlineAI step.
 5. **`visualization.md`** — how we *see* the system: a code-derived topology
    map and live trace replay, rendered in the `/vision-v2` React Flow engine.
+6. **`venture-file.md`** — how a venture is *defined*: the `ventures/*.yaml`
+   file and the **function** grouping layer (declarative departments, not
+   orchestrators) that composes Layer 1 nodes into a venture.
 
 ---
 
