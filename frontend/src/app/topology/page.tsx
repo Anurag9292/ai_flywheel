@@ -304,8 +304,12 @@ export default function TopologyPage() {
           </ReactFlow>
         </div>
 
-        {/* Chronological timeline / replay (View 2). */}
-        <aside className="flex w-96 shrink-0 flex-col border-l border-white/10 bg-[#0d0d1a]">
+        {/* Chronological timeline / replay (View 2). The whole sidebar scrolls
+            as a single column — there are too many stacked panels (Trigger,
+            Functions, Review queue, Run timeline + steps) to fit on one screen
+            in tall configurations, and a single scroll is simpler and more
+            predictable than nested scroll regions. */}
+        <aside className="flex w-96 shrink-0 flex-col overflow-y-auto border-l border-white/10 bg-[#0d0d1a]">
           <TriggerPanel onTriggered={onTriggered} />
 
           {venture && (
@@ -401,8 +405,9 @@ export default function TopologyPage() {
             </div>
           )}
 
-          {/* The chronological steps. */}
-          <ol className="min-h-0 flex-1 overflow-y-auto p-3">
+          {/* The chronological steps. Lays out at natural height; the sidebar
+              itself scrolls (no nested scroll region). */}
+          <ol className="p-3">
             {steps.map((s, i) => {
               const dt = s.captured_at ? Date.parse(s.captured_at) - t0 : 0;
               const isActive = i === step;
