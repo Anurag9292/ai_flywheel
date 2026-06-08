@@ -348,17 +348,30 @@ walkthrough. Until then, it doesn't exist.
 ## Status snapshot
 
 - **Date of derivation:** initial pass (PostlineAI walkthrough, Steps 1–9).
-- **Implementation status (live):** the substrate + first nodes are now built
-  in the `flywheel/` package:
+- **Implementation status (live):** the substrate + Steps 1–4 are now built in
+  the `flywheel/` package:
   - **Substrate:** `event-bus` (`InMemoryEventBus`), `trace-recorder` — done.
   - **Step 1:** `thesis-tracker` node — done.
   - **Step 2:** `llm-gateway` (Protocol + fake), `web-search-client`,
     `semrush-client` (libraries, Protocol + fakes), the `Agent` seam
     (`SingleCallAgent`), and the `market-scanner` agentic node — done.
-  - Everything else remains a derived requirement, not yet built.
-- **Next slices:** Step 3 (`pain-extractor` + `calendar`/`transcription`
-  clients) and Step 4 (`ad-campaign-runner`, `ad-analytics-collector`,
-  `signal-analyzer`, `founder-notifier` + ads/analytics/slack/email clients).
+  - **Step 3:** `calendar-client`, `transcription-client` (libraries, Protocol +
+    fakes) and the `pain-extractor` agentic node — done. `pain.extracted` feeds
+    the existing `thesis-tracker` by subscription (no wiring change).
+  - **Step 4:** `linkedin-ads-client` / `meta-ads-client` (shared `AdsClient`
+    Protocol + fakes), `analytics-client`, `slack-client`, `email-client`
+    (Protocol + fakes), and the `ad-campaign-runner`, `ad-analytics-collector`,
+    `signal-analyzer` (agentic), `founder-notifier` nodes — done. This closes
+    the `campaign.requested → launched → metrics.updated → signal.verdict →
+    {thesis-tracker, founder-notifier}` decision loop.
+  - **Deferred within Step 4:** the `tick.daily` timer trigger on
+    `ad-analytics-collector` (no timer substrate yet — see node TODO).
+  - Everything from Step 5 onward remains a derived requirement, not yet built.
+- **Next slices:** Step 5 (Wizard-of-Oz: `input-intake`, `post-drafter`,
+  `human-review-queue`, `post-scheduler`, `subscription-manager` + inbound /
+  linkedin-posting / billing clients) — which is also where durable state,
+  Temporal, and `topology.yaml` first arrive per `stack.md`.
 - **Visualization:** the live topology + trace-replay views are specified in
   `visualization.md` and derive their data from `Runtime.describe()` and the
-  `trace.captured` stream.
+  `trace.captured` stream. All Steps 1–4 nodes are registered in the dev
+  runtime (`flywheel/devserver/topology.py`) and triggerable from `/topology`.
