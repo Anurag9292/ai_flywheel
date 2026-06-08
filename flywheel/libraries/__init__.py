@@ -23,6 +23,12 @@ from flywheel.libraries.analytics_client import (
     FakeAnalyticsClient,
     LandingStats,
 )
+from flywheel.libraries.billing_client import (
+    BillingClient,
+    FakeBillingClient,
+    Payment,
+    Subscription,
+)
 from flywheel.libraries.calendar_client import (
     CalendarClient,
     CalendarEvent,
@@ -32,6 +38,16 @@ from flywheel.libraries.email_client import (
     EmailClient,
     EmailMessage,
     FakeEmailClient,
+)
+from flywheel.libraries.inbound_collector import (
+    FakeInboundCollector,
+    InboundCollector,
+    InboundItem,
+)
+from flywheel.libraries.linkedin_posting_client import (
+    FakeLinkedInPostingClient,
+    LinkedInPostingClient,
+    PublishedPost,
 )
 from flywheel.libraries.llm_gateway import FakeLLMGateway, LLMGateway
 from flywheel.libraries.semrush_client import (
@@ -84,4 +100,14 @@ __all__ = [
     "EmailClient",
     "FakeEmailClient",
     "EmailMessage",
+    "InboundCollector",
+    "FakeInboundCollector",
+    "InboundItem",
+    "LinkedInPostingClient",
+    "FakeLinkedInPostingClient",
+    "PublishedPost",
+    "BillingClient",
+    "FakeBillingClient",
+    "Subscription",
+    "Payment",
 ]
