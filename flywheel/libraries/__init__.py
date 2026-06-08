@@ -11,6 +11,18 @@ swap the real one (litellm, httpx clients) in behind the same Protocol when a
 venture step genuinely needs live I/O.
 """
 
+from flywheel.libraries.ads_client import (
+    AdsClient,
+    CampaignMetrics,
+    FakeLinkedInAdsClient,
+    FakeMetaAdsClient,
+    LaunchedCampaign,
+)
+from flywheel.libraries.analytics_client import (
+    AnalyticsClient,
+    FakeAnalyticsClient,
+    LandingStats,
+)
 from flywheel.libraries.calendar_client import (
     CalendarClient,
     CalendarEvent,
@@ -48,4 +60,12 @@ __all__ = [
     "TranscriptionClient",
     "FakeTranscriptionClient",
     "Transcript",
+    "AdsClient",
+    "FakeLinkedInAdsClient",
+    "FakeMetaAdsClient",
+    "LaunchedCampaign",
+    "CampaignMetrics",
+    "AnalyticsClient",
+    "FakeAnalyticsClient",
+    "LandingStats",
 ]
