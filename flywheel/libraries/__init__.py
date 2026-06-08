@@ -11,11 +11,43 @@ swap the real one (litellm, httpx clients) in behind the same Protocol when a
 venture step genuinely needs live I/O.
 """
 
+from flywheel.libraries.ads_client import (
+    AdsClient,
+    CampaignMetrics,
+    FakeLinkedInAdsClient,
+    FakeMetaAdsClient,
+    LaunchedCampaign,
+)
+from flywheel.libraries.analytics_client import (
+    AnalyticsClient,
+    FakeAnalyticsClient,
+    LandingStats,
+)
+from flywheel.libraries.calendar_client import (
+    CalendarClient,
+    CalendarEvent,
+    FakeCalendarClient,
+)
+from flywheel.libraries.email_client import (
+    EmailClient,
+    EmailMessage,
+    FakeEmailClient,
+)
 from flywheel.libraries.llm_gateway import FakeLLMGateway, LLMGateway
 from flywheel.libraries.semrush_client import (
     FakeSemrushClient,
     KeywordVolume,
     SemrushClient,
+)
+from flywheel.libraries.slack_client import (
+    FakeSlackClient,
+    SlackClient,
+    SlackMessage,
+)
+from flywheel.libraries.transcription_client import (
+    FakeTranscriptionClient,
+    Transcript,
+    TranscriptionClient,
 )
 from flywheel.libraries.web_search_client import (
     FakeWebSearchClient,
@@ -32,4 +64,24 @@ __all__ = [
     "SemrushClient",
     "FakeSemrushClient",
     "KeywordVolume",
+    "CalendarClient",
+    "FakeCalendarClient",
+    "CalendarEvent",
+    "TranscriptionClient",
+    "FakeTranscriptionClient",
+    "Transcript",
+    "AdsClient",
+    "FakeLinkedInAdsClient",
+    "FakeMetaAdsClient",
+    "LaunchedCampaign",
+    "CampaignMetrics",
+    "AnalyticsClient",
+    "FakeAnalyticsClient",
+    "LandingStats",
+    "SlackClient",
+    "FakeSlackClient",
+    "SlackMessage",
+    "EmailClient",
+    "FakeEmailClient",
+    "EmailMessage",
 ]

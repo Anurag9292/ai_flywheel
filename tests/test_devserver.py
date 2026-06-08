@@ -21,7 +21,16 @@ def test_topology_endpoint_returns_describe_shape() -> None:
     assert r.status_code == 200
     topo = r.json()
     names = {n["name"] for n in topo["nodes"]}
-    assert {"thesis-tracker", "market-scanner"} <= names
+    # Steps 1–4 nodes are all registered in the dev runtime.
+    assert {
+        "thesis-tracker",
+        "market-scanner",
+        "pain-extractor",
+        "ad-campaign-runner",
+        "ad-analytics-collector",
+        "signal-analyzer",
+        "founder-notifier",
+    } <= names
     assert "llm-gateway" in topo["libraries"]
     assert topo["substrate"]["name"] == "trace-recorder"
 
@@ -43,10 +52,58 @@ def test_publish_triggers_real_multistep_run() -> None:
     body = r.json()
     chain = body["chain"]
     nodes = [s["node"] for s in chain["steps"]]
-    # The real chain: market-scanner then thesis-tracker reacting to it.
-    assert nodes == ["market-scanner", "thesis-tracker"]
+    # The real chain: market-scanner -> thesis-tracker (reacting to the
+    # landscape) -> founder-notifier (reacting to the thesis update). The chain
+    # growing as nodes subscribe is the event-driven reuse payoff.
+    assert nodes == ["market-scanner", "thesis-tracker", "founder-notifier"]
     assert chain["steps"][0]["is_start"] is True
     assert chain["steps"][-1]["is_end"] is True
+
+
+def test_publish_transcript_runs_step3_chain() -> None:
+    r = client.post(
+        "/api/publish",
+        json={
+            "type": "transcript.captured",
+            "venture_id": "postlineai",
+            "payload": {"transcript": "no time, posts flop", "speaker": "Founder A"},
+        },
+    )
+    assert r.status_code == 200
+    nodes = [s["node"] for s in r.json()["chain"]["steps"]]
+    # pain-extractor -> thesis-tracker -> founder-notifier (reuse by subscription).
+    assert nodes == ["pain-extractor", "thesis-tracker", "founder-notifier"]
+
+
+def test_publish_campaign_runs_step4_decision_loop() -> None:
+    r = client.post(
+        "/api/publish",
+        json={
+            "type": "campaign.requested",
+            "venture_id": "postlineai",
+            "payload": {
+                "platform": "linkedin",
+                "name": "ghostwriting waitlist",
+                "budget_usd": 200,
+                "landing_page": "/postlineai",
+                "rubric": "would pay $499/mo",
+            },
+        },
+    )
+    assert r.status_code == 200
+    steps = r.json()["chain"]["steps"]
+    nodes = [s["node"] for s in steps]
+    # The full ads -> analyze -> decide loop the architecture exists to prove.
+    # signal.verdict fans out to BOTH thesis-tracker and founder-notifier, and
+    # the resulting thesis.state.updated notifies the founder again — so
+    # founder-notifier legitimately appears twice. Assert the loop, not a brittle
+    # exact sequence.
+    assert nodes[:3] == ["ad-campaign-runner", "ad-analytics-collector", "signal-analyzer"]
+    assert "thesis-tracker" in nodes
+    assert nodes.count("founder-notifier") == 2
+    # Causal: first step is the trigger, last step is terminal.
+    assert steps[0]["is_start"] is True
+    assert steps[-1]["is_end"] is True
 
 
 def test_traces_reflects_published_runs_and_reset() -> None:
@@ -68,7 +125,8 @@ def test_evidence_event_runs_thesis_tracker_only() -> None:
         },
     )
     nodes = [s["node"] for s in r.json()["chain"]["steps"]]
-    assert nodes == ["thesis-tracker"]
+    # thesis-tracker reacts, then founder-notifier reacts to its update.
+    assert nodes == ["thesis-tracker", "founder-notifier"]
 
 
 def test_build_chain_orders_and_links_causally() -> None:
