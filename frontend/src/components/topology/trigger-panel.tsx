@@ -37,6 +37,18 @@ const EVENT_CATALOG: Record<
       rubric: "would pay $499/mo",
     },
   },
+  "inbound.received": {
+    reacts: "input-intake → post-drafter → human-review-queue (parks for approval)",
+    payload: {
+      customer_id: "c1",
+      kind: "text",
+      content: "Want a post about why we moved off Kubernetes.",
+    },
+  },
+  "subscription.requested": {
+    reacts: "subscription-manager (activates + charges)",
+    payload: { customer_id: "c1", plan: "trial", amount_usd: 299 },
+  },
   "evidence.collected": {
     reacts: "thesis-tracker → founder-notifier",
     payload: { assumption: "willing_to_pay_499", supports: true },
@@ -80,6 +92,8 @@ const PRESETS: { label: string; type: string; hint: string }[] = [
   { label: "Run desk research", type: "research.requested", hint: "market-scanner → thesis-tracker" },
   { label: "Capture a discovery call", type: "transcript.captured", hint: "pain-extractor → thesis-tracker" },
   { label: "Run the ad test", type: "campaign.requested", hint: "ads → analyze → decide loop" },
+  { label: "Customer sends input", type: "inbound.received", hint: "drafts a post, parks for review" },
+  { label: "New subscription", type: "subscription.requested", hint: "subscription-manager" },
   { label: "Submit evidence (supports)", type: "evidence.collected", hint: "thesis-tracker" },
   { label: "Signal verdict: kill", type: "signal.verdict", hint: "thesis-tracker (contradicts)" },
 ];

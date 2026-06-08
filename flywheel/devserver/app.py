@@ -32,7 +32,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from flywheel.core.events import Event
-from flywheel.devserver.topology import build_runtime
+from flywheel.devserver.topology import build_runtime, find_review_queue
 
 app = FastAPI(
     title="AI Flywheel — Dev Introspection",
@@ -50,6 +50,8 @@ app.add_middleware(
 # One long-lived runtime for the process. Its bus + nodes persist across
 # requests, and traces are held in memory so /api/traces reads live state.
 _runtime, _bus, _recorder = build_runtime(keep_in_memory=True)
+# The human-review-queue holds parked items needing founder approval (Step 5).
+_review_queue = find_review_queue(_runtime)
 
 
 @app.get("/api/health")
@@ -153,3 +155,47 @@ def reset() -> dict[str, Any]:
     """Clear the in-memory traces so the UI can start clean."""
     _recorder.clear()
     return {"status": "cleared", "count": 0}
+
+
+@app.get("/api/review")
+def review_pending() -> dict[str, Any]:
+    """List items parked in the human-review-queue awaiting founder approval.
+
+    This is the visible side of the Wizard-of-Oz human-in-the-loop: drafts that
+    arrived tagged ``requires_human`` and are waiting for the founder to write /
+    approve the real post (Step 5).
+    """
+    pending = _review_queue.pending() if _review_queue is not None else []
+    return {"count": len(pending), "pending": pending}
+
+
+class ApproveRequest(BaseModel):
+    event_id: str = Field(description="The parked event_id to approve.")
+    venture_id: str = "postlineai"
+    draft: str | None = Field(
+        default=None, description="Optional final text the founder ghostwrote."
+    )
+
+
+@app.post("/api/review/approve")
+def review_approve(req: ApproveRequest) -> dict[str, Any]:
+    """Approve a parked item: publishes ``review.approved`` to resume the chain.
+
+    This is the *second* run of the park-and-resume flow — it re-enters the bus
+    and the human-review-queue re-emits the expected result type (e.g.
+    ``post.approved``), which the post-scheduler then publishes. Returns the
+    resulting trace chain for the resumed run.
+    """
+    payload: dict[str, Any] = {"event_id": req.event_id}
+    if req.draft is not None:
+        payload["draft"] = req.draft
+    event = Event(type="review.approved", venture_id=req.venture_id, payload=payload)
+    _bus.publish(event)
+
+    rows = [r for r in _recorder.traces if r.get("correlation_id") == event.correlation_id]
+    chains = _chains_from(rows)
+    return {
+        "correlation_id": event.correlation_id,
+        "approved": req.event_id,
+        "chain": chains[0] if chains else {"correlation_id": event.correlation_id, "steps": []},
+    }

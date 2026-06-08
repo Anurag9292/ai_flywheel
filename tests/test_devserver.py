@@ -129,6 +129,53 @@ def test_evidence_event_runs_thesis_tracker_only() -> None:
     assert nodes == ["thesis-tracker", "founder-notifier"]
 
 
+def test_wizard_of_oz_park_then_approve_resume() -> None:
+    # Run 1: customer input is drafted (human) and parked for review.
+    r1 = client.post(
+        "/api/publish",
+        json={
+            "type": "inbound.received",
+            "venture_id": "postlineai",
+            "payload": {"customer_id": "c1", "kind": "text", "content": "talk about hiring"},
+        },
+    )
+    nodes1 = [s["node"] for s in r1.json()["chain"]["steps"]]
+    # input-intake -> post-drafter -> human-review-queue (parks, emits nothing).
+    assert nodes1 == ["input-intake", "post-drafter", "human-review-queue"]
+
+    # The draft is now visible as a pending review item.
+    pending = client.get("/api/review").json()["pending"]
+    mine = [p for p in pending if p["payload"].get("customer_id") == "c1"]
+    assert len(mine) == 1
+    parked_id = mine[0]["event_id"]
+
+    # Run 2: founder approves with the real text -> chain resumes and publishes.
+    r2 = client.post(
+        "/api/review/approve",
+        json={"event_id": parked_id, "draft": "The real ghostwritten post."},
+    )
+    nodes2 = [s["node"] for s in r2.json()["chain"]["steps"]]
+    # human-review-queue re-emits post.approved -> post-scheduler publishes.
+    assert nodes2 == ["human-review-queue", "post-scheduler"]
+
+    # Item is no longer pending after approval.
+    still = [p for p in client.get("/api/review").json()["pending"] if p["event_id"] == parked_id]
+    assert still == []
+
+
+def test_subscription_request_activates_and_charges() -> None:
+    r = client.post(
+        "/api/publish",
+        json={
+            "type": "subscription.requested",
+            "venture_id": "postlineai",
+            "payload": {"customer_id": "c9", "plan": "trial", "amount_usd": 299},
+        },
+    )
+    nodes = [s["node"] for s in r.json()["chain"]["steps"]]
+    assert nodes == ["subscription-manager"]
+
+
 def test_build_chain_orders_and_links_causally() -> None:
     from flywheel.devserver.app import _build_chain
 

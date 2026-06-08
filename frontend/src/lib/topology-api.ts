@@ -149,6 +149,27 @@ export interface PublishResponse {
   chain: TraceChain;
 }
 
+// ─── Human review queue (Step 5 — Wizard-of-Oz) ──────────────────────────────
+
+export interface ReviewItem {
+  event_id: string;
+  type: string;
+  venture_id: string;
+  correlation_id: string;
+  payload: Record<string, unknown>;
+}
+
+export interface ReviewResponse {
+  count: number;
+  pending: ReviewItem[];
+}
+
+export interface ApproveResponse {
+  correlation_id: string;
+  approved: string;
+  chain: TraceChain;
+}
+
 export const fetchTopology = () => getJSON<Topology>("/api/topology");
 export const fetchTraces = () => getJSON<TracesResponse>("/api/traces");
 
@@ -159,3 +180,11 @@ export const publishEvent = (body: {
 }) => postJSON<PublishResponse>("/api/publish", body);
 
 export const resetTraces = () => postJSON<{ status: string }>("/api/reset", {});
+
+export const fetchReview = () => getJSON<ReviewResponse>("/api/review");
+
+export const approveReview = (body: {
+  event_id: string;
+  venture_id?: string;
+  draft?: string;
+}) => postJSON<ApproveResponse>("/api/review/approve", body);

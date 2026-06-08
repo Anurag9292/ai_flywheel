@@ -13,6 +13,7 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import FlowNode from "@/components/topology/flow-node";
+import ReviewPanel from "@/components/topology/review-panel";
 import TriggerPanel from "@/components/topology/trigger-panel";
 import { buildFlow } from "@/lib/topology-layout";
 import {
@@ -35,6 +36,8 @@ export default function TopologyPage() {
   const [selectedChain, setSelectedChain] = useState<string | null>(null);
   const [step, setStep] = useState(0);
   const [playing, setPlaying] = useState(false);
+  // Bumped on each trigger/approval so the review queue reloads its pending list.
+  const [reviewRefresh, setReviewRefresh] = useState(0);
 
   const load = useCallback(async () => {
     setError(null);
@@ -57,6 +60,8 @@ export default function TopologyPage() {
   // After triggering a run, reload traces and jump to (and play) the new run.
   const onTriggered = useCallback(
     async (correlationId: string) => {
+      // Let the review queue re-check for newly parked / cleared items.
+      setReviewRefresh((n) => n + 1);
       try {
         const tr = await fetchTraces();
         const filtered = (tr.chains ?? []).filter((c) =>
@@ -217,6 +222,8 @@ export default function TopologyPage() {
         {/* Chronological timeline / replay (View 2). */}
         <aside className="flex w-96 shrink-0 flex-col border-l border-white/10 bg-[#0d0d1a]">
           <TriggerPanel onTriggered={onTriggered} />
+
+          <ReviewPanel onApproved={onTriggered} refreshKey={reviewRefresh} />
 
           <div className="border-b border-white/10 p-4">
             <h2 className="mb-1 text-sm font-semibold">Run timeline</h2>

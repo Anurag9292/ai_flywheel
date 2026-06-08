@@ -25,9 +25,14 @@ from flywheel.libraries.web_search_client import FakeWebSearchClient, SearchResu
 from flywheel.nodes.ad_analytics_collector import AdAnalyticsCollector
 from flywheel.nodes.ad_campaign_runner import AdCampaignRunner
 from flywheel.nodes.founder_notifier import FounderNotifier
+from flywheel.nodes.human_review_queue import HumanReviewQueue
+from flywheel.nodes.input_intake import InputIntake
 from flywheel.nodes.market_scanner import MarketMap, MarketScanner
 from flywheel.nodes.pain_extractor import PainExtractor, PainReport
+from flywheel.nodes.post_drafter import PostDrafter
+from flywheel.nodes.post_scheduler import PostScheduler
 from flywheel.nodes.signal_analyzer import SignalAnalyzer, SignalVerdict
+from flywheel.nodes.subscription_manager import SubscriptionManager
 from flywheel.nodes.thesis_tracker import ThesisTracker
 
 DEFAULT_TRACE_LOG = Path("traces.jsonl")
@@ -132,5 +137,19 @@ def build_runtime(
     runtime.register(AdAnalyticsCollector())
     runtime.register(_demo_signal_analyzer())
     runtime.register(FounderNotifier())
+    # Step 5: Wizard-of-Oz product flow (human-in-the-loop drafting).
+    runtime.register(InputIntake())
+    runtime.register(PostDrafter())  # defaults to HumanDrafter
+    runtime.register(HumanReviewQueue())
+    runtime.register(PostScheduler())
+    runtime.register(SubscriptionManager())
 
     return runtime, bus, recorder
+
+
+def find_review_queue(runtime: Runtime) -> HumanReviewQueue | None:
+    """Return the registered human-review-queue, if any (for the dev review API)."""
+    for node in runtime.nodes:
+        if isinstance(node, HumanReviewQueue):
+            return node
+    return None
