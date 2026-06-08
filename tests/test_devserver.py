@@ -16,6 +16,18 @@ def test_health() -> None:
     assert r.json() == {"status": "ok"}
 
 
+def test_venture_endpoint_returns_functions_and_lint() -> None:
+    r = client.get("/api/venture")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["name"] == "postlineai"
+    fn_names = {f["name"] for f in body["functions"]}
+    assert {"market-exploration", "gtm", "customer-success"} <= fn_names
+    # The venture composition is clean against the live graph.
+    assert body["lint"]["unknown_nodes"] == []
+    assert body["lint"]["inactive_nodes"] == []
+
+
 def test_topology_endpoint_returns_describe_shape() -> None:
     r = client.get("/api/topology")
     assert r.status_code == 200
