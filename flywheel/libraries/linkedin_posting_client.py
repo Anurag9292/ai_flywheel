@@ -22,19 +22,32 @@ class PublishedPost(BaseModel):
     url: str
 
 
+class PostMetrics(BaseModel):
+    post_id: str
+    impressions: int = 0
+    reactions: int = 0
+    comments: int = 0
+    shares: int = 0
+
+
 @runtime_checkable
 class LinkedInPostingClient(Protocol):
     def publish(self, customer_id: str, text: str) -> PublishedPost: ...
+
+    def get_post_metrics(self, post_id: str) -> PostMetrics: ...
 
 
 class FakeLinkedInPostingClient:
     """Offline posting client. Records published posts in memory, deterministically.
 
-    Post ids/urls derive from publish order so output is reproducible.
+    Post ids/urls derive from publish order so output is reproducible; read
+    metrics derive from a stable hash of the post id (added in Step 6 — the
+    "read endpoints" the post-analytics-collector needs).
     """
 
-    def __init__(self) -> None:
+    def __init__(self, metrics: dict[str, PostMetrics] | None = None) -> None:
         self.published: list[PublishedPost] = []
+        self._metrics = metrics or {}
 
     def publish(self, customer_id: str, text: str) -> PublishedPost:
         post_id = f"li-post-{len(self.published) + 1}"
@@ -45,3 +58,16 @@ class FakeLinkedInPostingClient:
         )
         self.published.append(post)
         return post
+
+    def get_post_metrics(self, post_id: str) -> PostMetrics:
+        if post_id in self._metrics:
+            return self._metrics[post_id]
+        seed = sum(ord(c) for c in post_id)
+        impressions = (seed * 29) % 8_000
+        return PostMetrics(
+            post_id=post_id,
+            impressions=impressions,
+            reactions=impressions // 40,
+            comments=impressions // 400,
+            shares=impressions // 800,
+        )

@@ -24,6 +24,19 @@ def test_fake_posting_records_published() -> None:
     assert client.published == [post]
 
 
+def test_fake_posting_metrics_fixture_then_pseudo() -> None:
+    from flywheel.libraries.linkedin_posting_client import PostMetrics
+
+    client = FakeLinkedInPostingClient(
+        metrics={"li-post-1": PostMetrics(post_id="li-post-1", impressions=999)}
+    )
+    assert client.get_post_metrics("li-post-1").impressions == 999
+    # Unknown post id -> deterministic pseudo-metrics.
+    m = client.get_post_metrics("li-post-7")
+    assert m.post_id == "li-post-7"
+    assert client.get_post_metrics("li-post-7").impressions == m.impressions
+
+
 def test_fake_billing_subscription_and_payment() -> None:
     client = FakeBillingClient()
     sub = client.create_subscription("c1", "pro", 299.0)
