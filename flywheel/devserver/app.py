@@ -185,11 +185,33 @@ def review_approve(req: ApproveRequest) -> dict[str, Any]:
     and the human-review-queue re-emits the expected result type (e.g.
     ``post.approved``), which the post-scheduler then publishes. Returns the
     resulting trace chain for the resumed run.
+
+    The approval event reuses the *parked item's* ``correlation_id`` so the
+    resume threads onto the original draft run — the two runs (park, then
+    resume) appear as one continuous draft→approve→publish chain in the
+    timeline, rather than a disconnected fragment.
     """
     payload: dict[str, Any] = {"event_id": req.event_id}
     if req.draft is not None:
         payload["draft"] = req.draft
-    event = Event(type="review.approved", venture_id=req.venture_id, payload=payload)
+
+    # Reuse the parked item's correlation id so the resumed run threads onto the
+    # original draft run. Falls back to a fresh id if the item isn't found.
+    pending = _review_queue.pending() if _review_queue is not None else []
+    parked_correlation = next(
+        (p["correlation_id"] for p in pending if p["event_id"] == req.event_id),
+        None,
+    )
+    event = (
+        Event(
+            type="review.approved",
+            venture_id=req.venture_id,
+            correlation_id=parked_correlation,
+            payload=payload,
+        )
+        if parked_correlation is not None
+        else Event(type="review.approved", venture_id=req.venture_id, payload=payload)
+    )
     _bus.publish(event)
 
     rows = [r for r in _recorder.traces if r.get("correlation_id") == event.correlation_id]
