@@ -53,6 +53,34 @@ def test_signal_analyzer_runs_with_defaults(tmp_path) -> None:
     SignalVerdict.model_validate(out[0].payload)  # default-filled (weak)
 
 
+def test_same_node_reused_for_post_and_survey_signals(tmp_path) -> None:
+    # Step-6 reuse: the SAME signal-analyzer judges product engagement and
+    # survey signals, not just ad metrics — purely via new subscriptions.
+    analyzer = _analyzer_returning("strong")
+    assert "post.metrics.updated" in analyzer.reacts_to
+    assert "survey.responded" in analyzer.reacts_to
+
+    bus, _ = _runtime(tmp_path, analyzer)
+    out: list[Event] = []
+    bus.subscribe("signal.verdict", out.append)
+
+    bus.publish(Event(
+        type="post.metrics.updated",
+        venture_id="postlineai",
+        payload={"impressions": 5000, "reactions": 120, "rubric": "engagement up 2x"},
+    ))
+    bus.publish(Event(
+        type="survey.responded",
+        venture_id="postlineai",
+        payload={"nps": 9, "rubric": "customers happy enough to renew"},
+    ))
+
+    assert [e.payload["signal_from"] for e in out] == [
+        "post.metrics.updated",
+        "survey.responded",
+    ]
+
+
 def test_verdict_feeds_thesis_tracker_strong_and_kill(tmp_path) -> None:
     tracker = ThesisTracker()
     bus, _ = _runtime(tmp_path, _analyzer_returning("strong"), tracker)

@@ -348,7 +348,7 @@ walkthrough. Until then, it doesn't exist.
 ## Status snapshot
 
 - **Date of derivation:** initial pass (PostlineAI walkthrough, Steps 1–9).
-- **Implementation status (live):** the substrate + Steps 1–5 are now built in
+- **Implementation status (live):** the substrate + Steps 1–6 are now built in
   the `flywheel/` package:
   - **Substrate:** `event-bus` (`InMemoryEventBus`), `trace-recorder` — done.
   - **Step 1:** `thesis-tracker` node — done.
@@ -380,13 +380,26 @@ walkthrough. Until then, it doesn't exist.
     `stack.md`. The `post-drafter` impl binding is reflected in the node version
     (`0.1.0-human`); swapping to `agent-v1` (Step 7) won't change the event
     contract.
-  - Everything from Step 6 onward remains a derived requirement, not yet built.
-- **Next slices:** Step 6 (`post-analytics-collector`, `customer-survey`; reuse
-  `signal-analyzer` via a stage rubric) then Step 7 (the real `post-drafter`
-  agent + `voice-profile-builder`, where embeddings/pgvector first arrive).
+  - **Step 6 (measure what's working):** `post-analytics-collector`
+    (`post.published → post.metrics.updated`, via a new `get_post_metrics` read
+    endpoint on `linkedin-posting-client`) and `customer-survey`
+    (`survey.requested → survey.responded`) — done. **No new agentic node:**
+    `signal-analyzer` is *reused* by adding `post.metrics.updated` and
+    `survey.responded` to its subscriptions, judging each against its payload
+    rubric with **zero change to `handle()`** — the first real proof of the
+    "validation built the production nodes" claim. Publishing a post now flows
+    straight into engagement analytics → signal → thesis/founder.
+  - **Deferred within Step 6 (documented):** the `tick.daily` timers on both
+    collectors; `customer-survey` returns a deterministic response inline rather
+    than waiting on a real human (the park-and-resume shape from Step 5 is the
+    documented upgrade).
+  - Everything from Step 7 onward remains a derived requirement, not yet built.
+- **Next slices:** Step 7 — swap `post-drafter`'s human impl for a real LLM
+  agent (the `Drafter` seam is already in place) + `voice-profile-builder`,
+  where embeddings/pgvector first arrive per `stack.md`.
 - **Visualization:** the live topology + trace-replay views are specified in
   `visualization.md` and derive their data from `Runtime.describe()` and the
-  `trace.captured` stream. All Steps 1–5 nodes are registered in the dev
+  `trace.captured` stream. All Steps 1–6 nodes are registered in the dev
   runtime (`flywheel/devserver/topology.py`) and triggerable from `/topology`;
   the human-review queue is visible/approvable via `/api/review` and the
   `/topology` review panel.

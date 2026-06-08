@@ -9,8 +9,9 @@ engagement, and growth: the **rubric is passed in** (via the reacting event's
 payload or, later, read from venture state), so the node itself stays generic.
 That is the Step-6 reuse the walkthrough calls for, designed in from the start.
 
-- **Reacts to:** ``campaign.metrics.updated`` (later also ``post.metrics.updated``,
-  ``survey.responded`` — added by subscription, no code change).
+- **Reacts to:** ``campaign.metrics.updated`` (Step 4), and — added in Step 6 by
+  subscription with **no change to** ``handle()`` — ``post.metrics.updated`` and
+  ``survey.responded``.
 - **Calls:** ``llm-gateway`` (via its ``Agent``).
 - **Emits:** ``signal.verdict`` (``strong | weak | kill`` + confidence + why).
 - **Kind:** agentic.
@@ -59,7 +60,15 @@ class SignalAnalyzer:
     name = "signal-analyzer"
     version = "0.1.0"
     kind = "agentic"
-    reacts_to = ["campaign.metrics.updated"]
+    # Step 4: ad metrics. Step 6 (reuse): the SAME node now also judges product
+    # engagement and survey signals — purely by adding subscriptions, no new
+    # code in handle(). The rubric (from the event payload) is what makes one
+    # generic node interpret each signal against its stage-specific bar.
+    reacts_to = [
+        "campaign.metrics.updated",
+        "post.metrics.updated",
+        "survey.responded",
+    ]
     emits = ["signal.verdict"]
     calls = ["llm-gateway"]
 

@@ -24,11 +24,13 @@ from flywheel.libraries.semrush_client import FakeSemrushClient, KeywordVolume
 from flywheel.libraries.web_search_client import FakeWebSearchClient, SearchResult
 from flywheel.nodes.ad_analytics_collector import AdAnalyticsCollector
 from flywheel.nodes.ad_campaign_runner import AdCampaignRunner
+from flywheel.nodes.customer_survey import CustomerSurvey
 from flywheel.nodes.founder_notifier import FounderNotifier
 from flywheel.nodes.human_review_queue import HumanReviewQueue
 from flywheel.nodes.input_intake import InputIntake
 from flywheel.nodes.market_scanner import MarketMap, MarketScanner
 from flywheel.nodes.pain_extractor import PainExtractor, PainReport
+from flywheel.nodes.post_analytics_collector import PostAnalyticsCollector
 from flywheel.nodes.post_drafter import PostDrafter
 from flywheel.nodes.post_scheduler import PostScheduler
 from flywheel.nodes.signal_analyzer import SignalAnalyzer, SignalVerdict
@@ -143,6 +145,9 @@ def build_runtime(
     runtime.register(HumanReviewQueue())
     runtime.register(PostScheduler())
     runtime.register(SubscriptionManager())
+    # Step 6: measure what's working (post engagement + customer surveys).
+    runtime.register(PostAnalyticsCollector())
+    runtime.register(CustomerSurvey())
 
     return runtime, bus, recorder
 

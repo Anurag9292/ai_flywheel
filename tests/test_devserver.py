@@ -162,28 +162,46 @@ def test_wizard_of_oz_park_then_approve_resume() -> None:
     # The approval reuses the parked correlation id so the two runs are stitched.
     assert body2["correlation_id"] == parked_correlation
     nodes2 = [s["node"] for s in body2["chain"]["steps"]]
-    # The merged chain shows the full draft->park->approve->publish story:
-    # input-intake -> post-drafter -> human-review-queue (park) ->
-    # human-review-queue (resume) -> post-scheduler.
-    assert nodes2 == [
+    # The merged chain shows the full draft->park->approve->publish story, then
+    # (Step 6) the published post flows into engagement analytics -> signal ->
+    # thesis + founder. The first five steps are the Wizard-of-Oz spine:
+    assert nodes2[:5] == [
         "input-intake",
         "post-drafter",
         "human-review-queue",
         "human-review-queue",
         "post-scheduler",
     ]
-    assert body2["chain"]["steps"][-1]["is_end"] is True
-    assert "post.published" in body2["chain"]["steps"][-1]["emitted_types"]
+    # Step-6 reuse: publishing triggers analytics + signal-analyzer downstream.
+    assert "post-analytics-collector" in nodes2
+    assert "signal-analyzer" in nodes2
 
     # /api/traces groups it as a SINGLE chain (one correlation id), not two.
     chains = client.get("/api/traces").json()["chains"]
     matching = [c for c in chains if c["correlation_id"] == parked_correlation]
     assert len(matching) == 1
-    assert len(matching[0]["steps"]) == 5
+    assert len(matching[0]["steps"]) == len(nodes2)
 
     # Item is no longer pending after approval.
     still = [p for p in client.get("/api/review").json()["pending"] if p["event_id"] == parked_id]
     assert still == []
+
+
+def test_survey_request_runs_step6_chain() -> None:
+    r = client.post(
+        "/api/publish",
+        json={
+            "type": "survey.requested",
+            "venture_id": "postlineai",
+            "payload": {"customer_id": "c1", "nps": 9, "rubric": "happy to renew?"},
+        },
+    )
+    nodes = [s["node"] for s in r.json()["chain"]["steps"]]
+    # customer-survey -> survey.responded fans out to signal-analyzer AND
+    # thesis-tracker; the verdict + thesis update then reach founder-notifier.
+    assert nodes[0] == "customer-survey"
+    assert "signal-analyzer" in nodes
+    assert "thesis-tracker" in nodes
 
 
 def test_subscription_request_activates_and_charges() -> None:
