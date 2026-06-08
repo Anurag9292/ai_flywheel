@@ -2,7 +2,7 @@
 
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import type { FlowKind } from "@/lib/topology-layout";
+import type { FlowKind, FunctionTag } from "@/lib/topology-layout";
 
 const KIND_STYLE: Record<FlowKind, { ring: string; bg: string; tag: string; tagText: string }> = {
   event: {
@@ -41,23 +41,47 @@ export interface FlowNodeProps {
   label: string;
   kind: FlowKind;
   active?: boolean;
+  functions?: FunctionTag[];
+  dimmed?: boolean;
 }
 
 function FlowNodeComponent({ data }: NodeProps) {
   const d = data as unknown as FlowNodeProps;
   const s = KIND_STYLE[d.kind];
+  const fns = d.functions ?? [];
+  // The primary function colors a left accent bar; all functions show as chips.
+  const accent = fns[0]?.color;
   return (
     <div
-      className={`rounded-xl border bg-gradient-to-br px-4 py-3 backdrop-blur-sm transition-all ${s.ring} ${s.bg} ${
+      className={`relative overflow-hidden rounded-xl border bg-gradient-to-br px-4 py-3 backdrop-blur-sm transition-all ${s.ring} ${s.bg} ${
         d.active ? "scale-110 ring-2 ring-amber-300 shadow-[0_0_30px_rgba(251,191,36,0.6)]" : ""
-      }`}
+      } ${d.dimmed ? "opacity-25" : ""}`}
       style={{ minWidth: 150 }}
     >
+      {accent && (
+        <span
+          className="absolute left-0 top-0 h-full w-1.5"
+          style={{ backgroundColor: accent }}
+        />
+      )}
       <Handle type="target" position={Position.Top} className="!bg-slate-400" />
       <div className={`mb-1 inline-block rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${s.tag}`}>
         {s.tagText}
       </div>
       <div className="font-mono text-sm text-white">{d.label}</div>
+      {fns.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {fns.map((f) => (
+            <span
+              key={f.name}
+              className="rounded px-1 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-white/90"
+              style={{ backgroundColor: `${f.color}33`, border: `1px solid ${f.color}` }}
+            >
+              {f.name}
+            </span>
+          ))}
+        </div>
+      )}
       <Handle type="source" position={Position.Bottom} className="!bg-slate-400" />
     </div>
   );

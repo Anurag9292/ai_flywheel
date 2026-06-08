@@ -183,6 +183,34 @@ export const resetTraces = () => postJSON<{ status: string }>("/api/reset", {});
 
 export const fetchReview = () => getJSON<ReviewResponse>("/api/review");
 
+// ─── Venture composition (Layer 2 — functions) ───────────────────────────────
+
+export interface VentureFunction {
+  name: string;
+  description: string;
+  nodes: string[];
+  events_in: string[];
+  events_out: string[];
+}
+
+export interface VentureLint {
+  unknown_nodes: string[];
+  inactive_nodes: string[];
+  config_conflicts: string[];
+  orphan_emitted: string[];
+  unproduced_reacted: string[];
+}
+
+export interface VentureResponse {
+  name: string;
+  description: string;
+  domain: Record<string, unknown>;
+  functions: VentureFunction[];
+  lint: VentureLint;
+}
+
+export const fetchVenture = () => getJSON<VentureResponse>("/api/venture");
+
 export const approveReview = (body: {
   event_id: string;
   venture_id?: string;

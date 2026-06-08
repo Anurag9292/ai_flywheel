@@ -13,22 +13,38 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import FlowNode from "@/components/topology/flow-node";
+import FunctionLegend from "@/components/topology/function-legend";
 import ReviewPanel from "@/components/topology/review-panel";
 import TriggerPanel from "@/components/topology/trigger-panel";
-import { buildFlow } from "@/lib/topology-layout";
+import { buildFlow, type NodeFunctionMap } from "@/lib/topology-layout";
 import {
   fetchTopology,
   fetchTraces,
+  fetchVenture,
   type Topology,
   type TraceChain,
   type TraceRow,
+  type VentureResponse,
 } from "@/lib/topology-api";
 
 const nodeTypes = { flow: FlowNode };
 const PLAY_INTERVAL_MS = 1400;
 
+// A stable, readable palette for functions (assigned in declaration order).
+const FUNCTION_PALETTE = [
+  "#f59e0b", // amber
+  "#3b82f6", // blue
+  "#10b981", // emerald
+  "#ec4899", // pink
+  "#a855f7", // purple
+  "#14b8a6", // teal
+  "#ef4444", // red
+  "#84cc16", // lime
+];
+
 export default function TopologyPage() {
   const [topo, setTopo] = useState<Topology | null>(null);
+  const [venture, setVenture] = useState<VentureResponse | null>(null);
   const [chains, setChains] = useState<TraceChain[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,12 +54,19 @@ export default function TopologyPage() {
   const [playing, setPlaying] = useState(false);
   // Bumped on each trigger/approval so the review queue reloads its pending list.
   const [reviewRefresh, setReviewRefresh] = useState(0);
+  // Which function the legend is focusing (dims everything else); null = none.
+  const [focusedFunction, setFocusedFunction] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [t, tr] = await Promise.all([fetchTopology(), fetchTraces()]);
+      const [t, tr, v] = await Promise.all([
+        fetchTopology(),
+        fetchTraces(),
+        fetchVenture(),
+      ]);
       setTopo(t);
+      setVenture(v);
       const filtered = (tr.chains ?? []).filter((c) =>
         (c.steps ?? []).some((s) => s.node),
       );
@@ -85,10 +108,41 @@ export default function TopologyPage() {
     [],
   );
 
+  // Assign each function a stable color (declaration order) and build the
+  // node -> function-tags map that colors node tiles. A node can be in several
+  // functions (overlap), so it gets multiple tags.
+  const functionColors = useMemo<Record<string, string>>(() => {
+    const map: Record<string, string> = {};
+    (venture?.functions ?? []).forEach((f, i) => {
+      map[f.name] = FUNCTION_PALETTE[i % FUNCTION_PALETTE.length];
+    });
+    return map;
+  }, [venture]);
+
+  const nodeFunctions = useMemo<NodeFunctionMap>(() => {
+    const map: NodeFunctionMap = {};
+    for (const f of venture?.functions ?? []) {
+      for (const nodeName of f.nodes) {
+        (map[nodeName] ??= []).push({ name: f.name, color: functionColors[f.name] });
+      }
+    }
+    return map;
+  }, [venture, functionColors]);
+
+  // The set of node names belonging to the focused function (for dimming).
+  const focusedNodeNames = useMemo<Set<string>>(() => {
+    if (!focusedFunction) return new Set();
+    const f = venture?.functions.find((x) => x.name === focusedFunction);
+    return new Set(f?.nodes ?? []);
+  }, [focusedFunction, venture]);
+
   const { nodes: baseNodes, edges: baseEdges } = useMemo<{
     nodes: Node[];
     edges: Edge[];
-  }>(() => (topo ? buildFlow(topo) : { nodes: [], edges: [] }), [topo]);
+  }>(
+    () => (topo ? buildFlow(topo, nodeFunctions) : { nodes: [], edges: [] }),
+    [topo, nodeFunctions],
+  );
 
   const activeChain = chains.find((c) => c.correlation_id === selectedChain);
   const steps = activeChain?.steps ?? [];
@@ -105,15 +159,22 @@ export default function TopologyPage() {
     return () => clearTimeout(id);
   }, [playing, step, steps.length, activeChain]);
 
-  // Highlight the firing node for the current step.
+  // Highlight the firing node for the current step; dim nodes outside the
+  // focused function (if any).
   const activeNodeName = current?.node ?? null;
   const nodes = useMemo<Node[]>(
     () =>
-      baseNodes.map((n) => ({
-        ...n,
-        data: { ...n.data, active: n.id === `node:${activeNodeName}` },
-      })),
-    [baseNodes, activeNodeName],
+      baseNodes.map((n) => {
+        const nodeName = n.id.startsWith("node:") ? n.id.slice("node:".length) : null;
+        const dimmed = focusedFunction !== null
+          ? !(nodeName !== null && focusedNodeNames.has(nodeName))
+          : false;
+        return {
+          ...n,
+          data: { ...n.data, active: n.id === `node:${activeNodeName}`, dimmed },
+        };
+      }),
+    [baseNodes, activeNodeName, focusedFunction, focusedNodeNames],
   );
 
   // Highlight the edges involved in the current step: trigger event -> node,
@@ -140,6 +201,19 @@ export default function TopologyPage() {
     });
   }, [baseEdges, current]);
 
+  // When a function is focused, fade edges that don't touch one of its nodes.
+  const displayEdges = useMemo<Edge[]>(() => {
+    if (focusedFunction === null) return edges;
+    return edges.map((e) => {
+      const src = e.source.startsWith("node:") ? e.source.slice("node:".length) : null;
+      const tgt = e.target.startsWith("node:") ? e.target.slice("node:".length) : null;
+      const touches =
+        (src !== null && focusedNodeNames.has(src)) ||
+        (tgt !== null && focusedNodeNames.has(tgt));
+      return touches ? e : { ...e, style: { ...e.style, opacity: 0.12 } };
+    });
+  }, [edges, focusedFunction, focusedNodeNames]);
+
   const t0 = steps[0]?.captured_at ? Date.parse(steps[0].captured_at) : 0;
 
   const selectChain = (cid: string) => {
@@ -152,10 +226,21 @@ export default function TopologyPage() {
     <div className="flex h-screen w-screen flex-col bg-[#0a0a14] text-white">
       <header className="flex items-center justify-between border-b border-white/10 px-6 py-3">
         <div>
-          <h1 className="text-lg font-semibold">Topology — live, code-derived</h1>
+          <h1 className="text-lg font-semibold">
+            Topology — live, code-derived
+            {venture && (
+              <span className="ml-2 text-sm font-normal text-slate-400">
+                · venture: <span className="text-fuchsia-300">{venture.name}</span>
+                {" · "}
+                {venture.functions.length} functions
+              </span>
+            )}
+          </h1>
           <p className="text-xs text-slate-400">
             From <code className="text-fuchsia-300">runtime.describe()</code> +
-            the <code className="text-fuchsia-300">trace.captured</code> stream.
+            the <code className="text-fuchsia-300">trace.captured</code> stream
+            {" · "}functions from{" "}
+            <code className="text-fuchsia-300">/api/venture</code>.
           </p>
         </div>
         <button
@@ -194,7 +279,7 @@ export default function TopologyPage() {
         <div className="min-w-0 flex-1">
           <ReactFlow
             nodes={nodes}
-            edges={edges}
+            edges={displayEdges}
             nodeTypes={nodeTypes}
             fitView
             proOptions={{ hideAttribution: true }}
@@ -222,6 +307,15 @@ export default function TopologyPage() {
         {/* Chronological timeline / replay (View 2). */}
         <aside className="flex w-96 shrink-0 flex-col border-l border-white/10 bg-[#0d0d1a]">
           <TriggerPanel onTriggered={onTriggered} />
+
+          {venture && (
+            <FunctionLegend
+              functions={venture.functions}
+              colors={functionColors}
+              active={focusedFunction}
+              onSelect={setFocusedFunction}
+            />
+          )}
 
           <ReviewPanel onApproved={onTriggered} refreshKey={reviewRefresh} />
 

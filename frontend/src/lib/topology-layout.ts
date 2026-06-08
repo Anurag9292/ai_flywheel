@@ -22,12 +22,24 @@ export type FlowKind =
   | "library"
   | "substrate";
 
+/** A node's function membership + the color of its primary function. A node may
+ *  belong to several functions (e.g. signal-analyzer). */
+export interface FunctionTag {
+  name: string;
+  color: string;
+}
+
 export interface FlowNodeData {
   label: string;
   kind: FlowKind;
   detail?: Record<string, unknown>;
+  functions?: FunctionTag[];
   [key: string]: unknown;
 }
+
+/** Map of node name -> its function tags (name + color). Built on the page from
+ *  /api/venture and a color palette. */
+export type NodeFunctionMap = Record<string, FunctionTag[]>;
 
 const COL = 260;
 const ROW_EVENTS = 40;
@@ -40,7 +52,10 @@ function spread(count: number, i: number): number {
   return i * COL - total / 2;
 }
 
-export function buildFlow(topo: Topology): { nodes: Node[]; edges: Edge[] } {
+export function buildFlow(
+  topo: Topology,
+  nodeFunctions: NodeFunctionMap = {},
+): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = [];
 
   topo.events.forEach((e, i) => {
@@ -63,6 +78,7 @@ export function buildFlow(topo: Topology): { nodes: Node[]; edges: Edge[] } {
       data: {
         label: n.name,
         kind: n.kind === "agentic" ? "node_agentic" : "node_dumb",
+        functions: nodeFunctions[n.name] ?? [],
         detail: {
           version: n.version,
           kind: n.kind,
