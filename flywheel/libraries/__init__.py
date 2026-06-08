@@ -28,11 +28,21 @@ from flywheel.libraries.calendar_client import (
     CalendarEvent,
     FakeCalendarClient,
 )
+from flywheel.libraries.email_client import (
+    EmailClient,
+    EmailMessage,
+    FakeEmailClient,
+)
 from flywheel.libraries.llm_gateway import FakeLLMGateway, LLMGateway
 from flywheel.libraries.semrush_client import (
     FakeSemrushClient,
     KeywordVolume,
     SemrushClient,
+)
+from flywheel.libraries.slack_client import (
+    FakeSlackClient,
+    SlackClient,
+    SlackMessage,
 )
 from flywheel.libraries.transcription_client import (
     FakeTranscriptionClient,
@@ -68,4 +78,10 @@ __all__ = [
     "AnalyticsClient",
     "FakeAnalyticsClient",
     "LandingStats",
+    "SlackClient",
+    "FakeSlackClient",
+    "SlackMessage",
+    "EmailClient",
+    "FakeEmailClient",
+    "EmailMessage",
 ]
