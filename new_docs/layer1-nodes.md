@@ -73,6 +73,8 @@ A Layer 1 node typically calls one or more of these inside its handler.
 | 12 | `inbound-collector` | Webhook + email-to-bucket | `input-intake` | Step 5 |
 | 13 | `linkedin-posting-client` | LinkedIn content posting API (separate from ads) | `post-scheduler`, `post-analytics-collector` | Step 5 |
 | 14 | `billing-client` | Stripe | `subscription-manager` | Step 5 |
+| 15 | `job-board-client` | Job aggregator (Indeed / LinkedIn Jobs / Greenhouse / Lever) | `lead-sourcer` | Lead-gen step |
+| 16 | `web-scraper-client` | Managed page-scrape/extract (Firecrawl / ScrapingBee). Distinct from `web-search-client`: this *reads* a URL, that one *finds* URLs. | `lead-sourcer` | Lead-gen step |
 
 > Add a library here only when a node already exists (or is being derived) that
 > needs to call it. Don't pre-create wrappers "in case."
@@ -103,6 +105,9 @@ canonical entry per node.
 | 15 | `voice-profile-builder` | agentic | Step 7 |
 | 16 | `feedback-collector` | dumb | Step 7 |
 | 17 | `prompt-tuner` *(placement TBD — see Open Questions in walkthrough)* | agentic | Step 7 |
+| 18 | `lead-sourcer` | dumb | Lead-gen step |
+| 19 | `company-needs-analyzer` | agentic | Lead-gen step |
+| 20 | `pitch-generator` | agentic | Lead-gen step |
 
 ### Canonical entries
 
@@ -282,6 +287,42 @@ Flagged as an open question in the walkthrough.
 - **Emits:** `prompt.tuning_proposed`.
 - **Kind:** agentic.
 
+#### `lead-sourcer`
+
+Finds companies hiring for content / brand / founder-comms roles (a strong
+"they need ghostwriting now" buying signal), groups postings per company, and
+optionally enriches each with a career-page scrape to surface a contact email.
+
+- **Reacts to:** `lead-search.requested`.
+- **Calls:** `job-board-client`, `web-scraper-client`.
+- **Emits:** `companies.discovered`.
+- **Kind:** dumb.
+
+#### `company-needs-analyzer`
+
+Reads each discovered company's postings + career-page snippet and infers what
+they most need right now, with a fit score and a one-line pitch angle.
+
+- **Reacts to:** `companies.discovered`.
+- **Calls:** `llm-gateway`.
+- **Emits:** `company.needs.profiled`.
+- **Kind:** agentic.
+
+#### `pitch-generator`
+
+Drafts a tailored outbound pitch per company — both an **email** form (subject
++ short body, when an address is known) and a **LinkedIn** DM variant. Each
+pitch is emitted tagged `requires_human=true` so it parks in the existing
+`human-review-queue` for founder approval before any send.
+
+- **Reacts to:** `company.needs.profiled`.
+- **Calls:** `llm-gateway`.
+- **Emits:** `pitch.drafted` (per company; tagged `requires_human`).
+- **Kind:** agentic.
+- **Note:** the `human-review-queue`'s `result_map` is extended at
+  registry-time with `pitch.drafted → pitch.approved`, so the *same* review
+  surface parks both posts and pitches — no node-code change.
+
 ---
 
 ## Event vocabulary (so far)
@@ -303,6 +344,8 @@ The events that have appeared above, grouped by domain.
   `payment.failed`.
 - **Notification & feedback:** any-event `urgent=true`, `founder.notified`,
   `feedback.captured`, `prompt.tuning_proposed`.
+- **Outbound lead-gen:** `lead-search.requested`, `companies.discovered`,
+  `company.needs.profiled`, `pitch.drafted`, `pitch.approved`.
 - **Timers (substrate):** `tick.minute`, `tick.daily`.
 - **Substrate:** `trace.captured`, `requires_human=true` *(meta-tag, not an
   event type)*.
@@ -393,6 +436,21 @@ walkthrough. Until then, it doesn't exist.
     collectors; `customer-survey` returns a deterministic response inline rather
     than waiting on a real human (the park-and-resume shape from Step 5 is the
     documented upgrade).
+  - **Outbound lead-gen (PostlineAI customer acquisition, derived from the
+    venture's own need to find paying customers):** `job-board-client`,
+    `web-scraper-client` (libraries, Protocol + fakes), and the `lead-sourcer`,
+    `company-needs-analyzer` (agentic), `pitch-generator` (agentic) nodes —
+    done. Composes a new `lead-generation` function in
+    `ventures/postlineai.yaml`, reusing `human-review-queue` (with the
+    `result_map` extended at registry-time to also resume `pitch.drafted →
+    pitch.approved`) and `founder-notifier` with **zero node-code changes**.
+    Closes the loop `lead-search.requested → companies.discovered →
+    company.needs.profiled → pitch.drafted (parked) → pitch.approved`.
+  - **Deferred within lead-gen (documented):** real job-board/scraping APIs
+    (today: fakes); durable lead/company state (Postgres trigger); scheduled
+    re-scraping (`tick.daily`, Temporal trigger); rate-limiting / proxies; and
+    a future `outreach-sender` node + `outreach-client` library (today the
+    chain stops at human-approved pitch).
   - Everything from Step 7 onward remains a derived requirement, not yet built.
 - **Next slices:** Step 7 — swap `post-drafter`'s human impl for a real LLM
   agent (the `Drafter` seam is already in place) + `voice-profile-builder`,

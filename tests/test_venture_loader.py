@@ -14,6 +14,7 @@ def test_loaded_runtime_registers_all_step1_6_nodes() -> None:
     runtime, _, _ = build_runtime_from_venture(v)
     names = {n.name for n in runtime.nodes}
     assert names == {
+        # Steps 1–6 (the original walking skeleton).
         "market-scanner",
         "thesis-tracker",
         "pain-extractor",
@@ -28,6 +29,10 @@ def test_loaded_runtime_registers_all_step1_6_nodes() -> None:
         "subscription-manager",
         "post-analytics-collector",
         "customer-survey",
+        # Outbound lead-gen function (PostlineAI customer acquisition).
+        "lead-sourcer",
+        "company-needs-analyzer",
+        "pitch-generator",
     }
 
 
@@ -48,5 +53,6 @@ def test_post_drafter_human_binding_from_yaml() -> None:
 
 def test_build_runtime_wrapper_matches_loader() -> None:
     # The public build_runtime() should produce the same node set as the loader.
+    # 14 nodes from Steps 1–6 + 3 from the outbound lead-gen function = 17.
     runtime, _, _ = build_runtime()
-    assert len(runtime.nodes) == 14
+    assert len(runtime.nodes) == 17

@@ -17,17 +17,28 @@ from collections.abc import Callable
 from typing import Any
 
 from flywheel.core.node import Node
+from flywheel.libraries.job_board_client import (
+    FakeJobBoardClient,
+    JobSearchCriteria,
+)
 from flywheel.libraries.llm_gateway import FakeLLMGateway
 from flywheel.libraries.semrush_client import FakeSemrushClient, KeywordVolume
+from flywheel.libraries.web_scraper_client import FakeWebScraperClient
 from flywheel.libraries.web_search_client import FakeWebSearchClient, SearchResult
 from flywheel.nodes.ad_analytics_collector import AdAnalyticsCollector
 from flywheel.nodes.ad_campaign_runner import AdCampaignRunner
+from flywheel.nodes.company_needs_analyzer import (
+    CompanyNeedsAnalyzer,
+    CompanyNeedsReport,
+)
 from flywheel.nodes.customer_survey import CustomerSurvey
 from flywheel.nodes.founder_notifier import FounderNotifier
-from flywheel.nodes.human_review_queue import HumanReviewQueue
+from flywheel.nodes.human_review_queue import DEFAULT_RESULT_MAP, HumanReviewQueue
 from flywheel.nodes.input_intake import InputIntake
+from flywheel.nodes.lead_sourcer import LeadSourcer
 from flywheel.nodes.market_scanner import MarketMap, MarketScanner
 from flywheel.nodes.pain_extractor import PainExtractor, PainReport
+from flywheel.nodes.pitch_generator import Pitch, PitchGenerator
 from flywheel.nodes.post_analytics_collector import PostAnalyticsCollector
 from flywheel.nodes.post_drafter import HumanDrafter, PostDrafter
 from flywheel.nodes.post_scheduler import PostScheduler
@@ -119,6 +130,145 @@ def _post_drafter(config: dict[str, Any]) -> Node:
     raise ValueError(f"post-drafter impl {impl!r} not implemented yet (Step 7).")
 
 
+# ── Outbound lead-gen (canned demo nodes) ─────────────────────────────────────
+
+
+def _lead_sourcer(config: dict[str, Any]) -> Node:
+    if not config.get("canned", True):
+        return LeadSourcer()
+    # The default criteria is set here so a bare ``lead-search.requested``
+    # produces sensible results in the dev demo. A payload-supplied criteria
+    # always wins (see ``LeadSourcer._criteria_from``). These keywords are the
+    # PostlineAI ICP for outbound — companies hiring for content / brand /
+    # founder-comms roles.
+    default_criteria = JobSearchCriteria(
+        keywords=["content", "brand", "founder", "linkedin", "thought leadership"],
+        departments=["Marketing"],
+        limit=10,
+    )
+    return LeadSourcer(
+        job_board=FakeJobBoardClient(),
+        scraper=FakeWebScraperClient(),
+        default_criteria=default_criteria,
+    )
+
+
+def _company_needs_analyzer(config: dict[str, Any]) -> Node:
+    if not config.get("canned", True):
+        return CompanyNeedsAnalyzer()
+    gateway = FakeLLMGateway()
+    gateway.register(
+        CompanyNeedsReport.__name__,
+        lambda prompt: {
+            "companies": [
+                {
+                    "company": "Northwind Robotics",
+                    "top_need": "founder-led thought leadership at scale",
+                    "buying_signals": [
+                        "hiring Head of Content Marketing",
+                        "remote role; signals investment in distributed team",
+                    ],
+                    "fit_score": 0.86,
+                    "pitch_angle": (
+                        "Hiring a Head of Content is slow; we ghostwrite the "
+                        "founder's LinkedIn from week one."
+                    ),
+                    "contact_email": "careers@northwind.example.com",
+                },
+                {
+                    "company": "Lumenlift",
+                    "top_need": "consistent founder LinkedIn posting + inbound",
+                    "buying_signals": [
+                        "explicitly hiring for LinkedIn ghostwriting + editorial calendar",
+                    ],
+                    "fit_score": 0.92,
+                    "pitch_angle": (
+                        "You're hiring exactly what we already do — let us run "
+                        "the founder's feed while the search continues."
+                    ),
+                    "contact_email": "hiring@lumenlift.example.com",
+                },
+                {
+                    "company": "Cobaltbase",
+                    "top_need": "build the CEO's voice on LinkedIn from scratch",
+                    "buying_signals": [
+                        "Founder Brand Lead role; voice + customer-conversation focus",
+                    ],
+                    "fit_score": 0.78,
+                    "pitch_angle": (
+                        "We build a founder voice from 10 minutes of voice notes "
+                        "a week — same outcome, no hire."
+                    ),
+                    "contact_email": "",
+                },
+            ]
+        },
+    )
+    return CompanyNeedsAnalyzer(gateway=gateway)
+
+
+def _pitch_generator(config: dict[str, Any]) -> Node:
+    if not config.get("canned", True):
+        return PitchGenerator()
+    gateway = FakeLLMGateway()
+
+    def _build(prompt: str) -> dict[str, Any]:
+        # Deterministic per-company canned pitch derived from the prompt — we
+        # parse the company name out of the prompt template so the same canned
+        # gateway works for every company in the run. Mirrors how the other
+        # canned agentic nodes work (one builder per schema).
+        company = ""
+        for line in prompt.splitlines():
+            if line.startswith("Company: "):
+                company = line[len("Company: ") :].strip()
+                break
+        contact_email = ""
+        for line in prompt.splitlines():
+            if line.startswith("Contact email (use as-is): "):
+                contact_email = line[len("Contact email (use as-is): ") :].strip()
+                break
+        angle = (
+            f"Saw you're hiring for content at {company} — we can ghostwrite "
+            "the founder's LinkedIn from week one."
+        )
+        return {
+            "company": company,
+            "contact_email": contact_email,
+            "angle": angle,
+            "email_subject": f"Ghostwriting the founder's LinkedIn at {company}",
+            "email_body": (
+                f"Hi {company} team,\n\n{angle}\n\nWe turn ~10 minutes of voice "
+                "notes a week into a consistent, on-brand LinkedIn presence for "
+                "B2B founders. Worth a 15-minute call?\n\nBest,\nPostlineAI"
+            ),
+            "linkedin_message": (
+                f"{angle} 10 min of voice notes/week → on-brand founder posts. "
+                "Open to a quick chat?"
+            ),
+        }
+
+    gateway.register(Pitch.__name__, _build)
+    return PitchGenerator(gateway=gateway)
+
+
+# ── The human-review-queue, extended for pitch.drafted ────────────────────────
+
+
+# The queue's default mapping is post.drafted -> post.approved (Step 5). The
+# outbound lead-gen step adds pitch.drafted -> pitch.approved so the *same*
+# review surface parks both kinds of human-gated artifact, keeping the founder
+# in one inbox. This is registry-time wiring only — the queue's ``handle()``
+# already supports an injected ``result_map`` (no node-code change).
+_REVIEW_RESULT_MAP: dict[str, str] = {
+    **DEFAULT_RESULT_MAP,
+    "pitch.drafted": "pitch.approved",
+}
+
+
+def _human_review_queue(_config: dict[str, Any]) -> Node:
+    return HumanReviewQueue(result_map=_REVIEW_RESULT_MAP)
+
+
 # ── The registry ──────────────────────────────────────────────────────────────
 
 NODE_BUILDERS: dict[str, NodeFactory] = {
@@ -131,11 +281,15 @@ NODE_BUILDERS: dict[str, NodeFactory] = {
     "founder-notifier": lambda _c: FounderNotifier(),
     "input-intake": lambda _c: InputIntake(),
     "post-drafter": _post_drafter,
-    "human-review-queue": lambda _c: HumanReviewQueue(),
+    "human-review-queue": _human_review_queue,
     "post-scheduler": lambda _c: PostScheduler(),
     "subscription-manager": lambda _c: SubscriptionManager(),
     "post-analytics-collector": lambda _c: PostAnalyticsCollector(),
     "customer-survey": lambda _c: CustomerSurvey(),
+    # Outbound lead-gen (PostlineAI customer acquisition).
+    "lead-sourcer": _lead_sourcer,
+    "company-needs-analyzer": _company_needs_analyzer,
+    "pitch-generator": _pitch_generator,
 }
 
 

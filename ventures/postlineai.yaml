@@ -61,3 +61,17 @@ functions:
       - name: post-analytics-collector
       - name: customer-survey
       - name: signal-analyzer        # shared with market-exploration
+
+  - name: lead-generation
+    description: >-
+      Outbound customer acquisition. Scrape job portals / career pages for
+      companies hiring for content / brand / founder-comms roles (a strong
+      "they need ghostwriting now" signal), infer each company's top need,
+      draft tailored email + LinkedIn pitches, and route them through the
+      existing human-review queue for founder approval before send.
+    nodes:
+      - name: lead-sourcer
+      - name: company-needs-analyzer
+      - name: pitch-generator
+      - name: human-review-queue     # reused (also in gtm)
+      - name: founder-notifier       # reused (also in thesis)
