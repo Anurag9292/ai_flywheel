@@ -36,6 +36,7 @@ from flywheel.devserver.topology import (
     build_runtime,
     find_review_queue,
     load_default_venture,
+    runtime_mode,
 )
 from flywheel.venture.view import function_view, lint_venture
 
@@ -85,6 +86,9 @@ def venture() -> dict[str, Any]:
         "name": _venture.name,
         "description": _venture.description,
         "domain": _venture.domain,
+        # "live" if lead-gen discovery hits real public ATS APIs, else "fake".
+        # The /topology UI renders this as a LIVE/FAKE badge.
+        "mode": runtime_mode(_venture),
         "functions": function_view(_venture, describe),
         "lint": lint_venture(_venture, describe),
     }

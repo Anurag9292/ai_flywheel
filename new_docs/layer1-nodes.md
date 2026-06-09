@@ -479,3 +479,22 @@ walkthrough. Until then, it doesn't exist.
   runtime (`flywheel/devserver/topology.py`) and triggerable from `/topology`;
   the human-review queue is visible/approvable via `/api/review` and the
   `/topology` review panel.
+- **Verifying live lead-gen on the UI:** the dev server picks its venture from
+  the `FLYWHEEL_VENTURE` env var (default `postlineai`, fully offline/fake). Run
+
+  ```
+  FLYWHEEL_VENTURE=postlineai-live uvicorn flywheel.devserver.app:app --reload
+  ```
+
+  to load `ventures/postlineai-live.yaml`, whose only difference is
+  `lead-sourcer config: {live: true}` — real, free public-ATS discovery over
+  the curated roster (`ventures/lead_sources.yaml`). The `/topology` header shows
+  a **LIVE / FAKE** badge (from `mode` on `GET /api/venture`). Click
+  **"Find outbound leads"** and the `lead-sourcer` trace step now carries **real
+  companies + job titles** pulled live.
+
+  > **What "live" covers (and doesn't, yet):** only *discovery* is live. The
+  > downstream agentic nodes (`company-needs-analyzer`, `pitch-generator`) still
+  > use canned gateways, so the *parked pitches* remain the deterministic demo
+  > set until those are also pointed at a real LLM. Inspect the
+  > `companies.discovered` step (or `/api/traces`) to see the real ATS data.

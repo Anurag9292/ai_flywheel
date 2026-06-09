@@ -205,6 +205,9 @@ export interface VentureResponse {
   name: string;
   description: string;
   domain: Record<string, unknown>;
+  // "live" = lead-gen discovery hits real public ATS APIs; "fake" = canned.
+  // Optional so an older backend without the field renders as fake.
+  mode?: "live" | "fake";
   functions: VentureFunction[];
   lint: VentureLint;
 }

@@ -235,6 +235,22 @@ export default function TopologyPage() {
                 {venture.functions.length} functions
               </span>
             )}
+            {venture && (
+              <span
+                title={
+                  venture.mode === "live"
+                    ? "Lead-gen discovery hits real public ATS APIs (Greenhouse/Lever/Ashby)."
+                    : "Lead-gen discovery uses canned fixtures — fast, offline, deterministic."
+                }
+                className={`ml-2 rounded px-1.5 py-0.5 align-middle text-[10px] font-semibold uppercase tracking-wide ${
+                  venture.mode === "live"
+                    ? "bg-amber-500/20 text-amber-200"
+                    : "bg-slate-500/20 text-slate-300"
+                }`}
+              >
+                {venture.mode === "live" ? "● live" : "fake"}
+              </span>
+            )}
           </h1>
           <p className="text-xs text-slate-400">
             From <code className="text-fuchsia-300">runtime.describe()</code> +

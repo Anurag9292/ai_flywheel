@@ -14,11 +14,16 @@
 # ATS auto-detection (guessing tokens from company names) is a documented later
 # step. Add/remove rows freely — no code change needed.
 #
-# NOTE: the tokens below are well-known real boards used as sane defaults for a
-# live run. Curate this to companies that match PostlineAI's ICP (B2B SaaS
-# hiring for content / brand / founder-comms roles) for the best signal.
+# These are B2B SaaS / dev-tool companies hiring for content / brand / marketing
+# / devrel roles — PostlineAI's ICP (a live content req is a strong "they'd buy
+# ghostwriting" signal). Every token below was verified live against the public
+# API at authoring time; boards change, so re-verify if a company stops showing
+# up (a dead token just yields no postings — it never crashes the run).
 
 companies:
-  - { ats: greenhouse, token: stripe,   name: Stripe }
-  - { ats: lever,      token: netflix,  name: Netflix }
-  - { ats: ashby,      token: ramp,     name: Ramp }
+  - { ats: lever,      token: mindtickle, name: Mindtickle }   # revenue-enablement SaaS; marketing reqs
+  - { ats: lever,      token: nium,       name: Nium }          # fintech infra; content strategist reqs
+  - { ats: lever,      token: scaleway,   name: Scaleway }      # cloud/AI; content editor reqs
+  - { ats: greenhouse, token: webflow,    name: Webflow }       # web platform; marketing/GTM reqs
+  - { ats: ashby,      token: posthog,    name: PostHog }       # dev analytics; developer-marketer reqs
+  - { ats: ashby,      token: vercel,     name: Vercel }        # dev platform; devrel/marketing reqs
