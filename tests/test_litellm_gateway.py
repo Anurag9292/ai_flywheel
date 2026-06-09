@@ -16,8 +16,18 @@ class _Schema(BaseModel):
     score: float = 0.0
 
 
-def _install_fake_litellm(monkeypatch: Any, *, content: str, cost: float = 0.0012) -> dict:
-    """Install a fake `litellm` module that records the call and returns content."""
+def _install_fake_litellm(
+    monkeypatch: Any,
+    *,
+    content: str,
+    cost: float = 0.0012,
+    computed_cost: float = 0.0042,
+) -> dict:
+    """Install a fake `litellm` module that records the call and returns content.
+
+    ``cost`` is what ``_hidden_params["response_cost"]`` carries; ``computed_cost``
+    is what the ``litellm.completion_cost`` fallback returns.
+    """
     captured: dict[str, Any] = {}
 
     def completion(**kwargs: Any) -> Any:
@@ -29,8 +39,12 @@ def _install_fake_litellm(monkeypatch: Any, *, content: str, cost: float = 0.001
         resp._hidden_params = {"response_cost": cost}
         return resp
 
+    def completion_cost(completion_response: Any = None, **_: Any) -> float:
+        return computed_cost
+
     fake = types.ModuleType("litellm")
     fake.completion = completion  # type: ignore[attr-defined]
+    fake.completion_cost = completion_cost  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "litellm", fake)
     return captured
 
@@ -54,6 +68,20 @@ def test_litellm_gateway_parses_structured_output(monkeypatch: Any) -> None:
     assert captured["model"] == "gpt-4o-mini"
     assert captured["response_format"]["json_schema"]["name"] == "_Schema"
     assert any(m["content"] == "analyze this" for m in captured["messages"])
+
+
+def test_litellm_cost_falls_back_to_completion_cost(monkeypatch: Any) -> None:
+    # _hidden_params carries 0.0 (the real-run symptom) → fall back to
+    # litellm.completion_cost(), which computes from model + token usage.
+    _install_fake_litellm(
+        monkeypatch,
+        content='{"summary": "x", "score": 0.1}',
+        cost=0.0,
+        computed_cost=0.0042,
+    )
+    gw = LiteLLMGateway()
+    _parsed, completion = gw.complete("x", _Schema)
+    assert completion.cost_usd == 0.0042
 
 
 def test_litellm_gateway_default_model(monkeypatch: Any) -> None:
