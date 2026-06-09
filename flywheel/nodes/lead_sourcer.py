@@ -30,7 +30,7 @@ from typing import Any
 import structlog
 from pydantic import BaseModel, Field
 
-from flywheel.core.crawl_agent import CrawlAgent
+from flywheel.agents.crawl_agent import ContactCrawlGoal, CrawlAgent
 from flywheel.core.events import Event
 from flywheel.core.node import NodeContext
 from flywheel.libraries.job_board_client import (
@@ -213,8 +213,9 @@ class LeadSourcer:
         seed = self._company_seed_url(lead)
         if not seed:
             return
+        goal = ContactCrawlGoal()
         try:
-            result = self._crawler.crawl(seed)  # type: ignore[union-attr]
+            result = self._crawler.crawl(seed, goal)  # type: ignore[union-attr]
         except Exception as exc:  # noqa: BLE001 — enrichment is best-effort
             log.warning(
                 "lead_sourcer.crawl_failed",
@@ -223,19 +224,21 @@ class LeadSourcer:
                 error=f"{type(exc).__name__}: {exc}",
             )
             return
+        emails = result.findings.get("emails", [])
+        context = result.findings.get("context", "")
         log.info(
             "lead_sourcer.crawled",
             company=lead.company,
             seed=seed,
             pages=result.pages_count,
-            emails=result.emails,
+            emails=emails,
             stop_reason=result.stop_reason,
         )
         lead.career_page_url = seed
-        if not lead.career_page_snippet and result.company_context:
-            lead.career_page_snippet = result.company_context[: self._snippet_chars]
-        if not lead.contact_email and result.emails:
-            lead.contact_email = result.emails[0]
+        if not lead.career_page_snippet and context:
+            lead.career_page_snippet = context[: self._snippet_chars]
+        if not lead.contact_email and emails:
+            lead.contact_email = emails[0]
 
     def _enrich_via_single_scrape(self, lead: CompanyLead) -> None:
         first_url = lead.postings[0].url

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from flywheel.core.crawl_agent import CrawlAgent
+from flywheel.agents.crawl_agent import CrawlAgent
 from flywheel.core.events import Event, InMemoryEventBus
 from flywheel.core.node import Runtime
 from flywheel.core.substrate import TraceRecorder

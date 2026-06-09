@@ -42,26 +42,40 @@ multimodal). For *reading SSR company pages* that machinery is overkill — see 
 
 ```
 lead-sourcer (Layer 1 node — event contract unchanged)
-   └── CrawlAgent  (an `Agent` impl — the "GraphAgent" stack.md anticipated)
-        ├── Planner    : score links / decide what to fetch next / when to stop
-        ├── (loop)     : frontier (priority queue) + visited graph + budgets
-        └── Aggregator : absorb page findings; satisfied(goal)?
-             └── WebScraperClient (Protocol — the swappable leaf)
-                   ├── HttpxScraperClient    (in-house, default real impl)
-                   ├── FirecrawlScraperClient (managed; JS-heavy / anti-bot)
-                   └── FakeWebScraperClient   (offline, deterministic — tests/default)
+   └── CrawlAgent  (flywheel/agents/ — a reusable, GOAL-AGNOSTIC capability)
+        │   owns the MECHANISM: frontier (priority queue) + visited graph +
+        │   budgets + same-domain restriction. Carries NO use-case logic.
+        ├── CrawlGoal  (the pluggable INTENT — swap it to reuse the crawler)
+        │     • score_link / absorb / satisfied / result
+        │     • ContactCrawlGoal  → lead-gen (email + positioning)
+        │     • KeywordCrawlGoal  → market research / topic capture
+        │     • …RAG ingestion, diligence, etc. (just write a new goal)
+        └── WebScraperClient (Protocol — the swappable executor leaf)
+              ├── HttpxScraperClient    (in-house, default real impl)
+              ├── FirecrawlScraperClient (managed; JS-heavy / anti-bot)
+              └── FakeWebScraperClient   (offline, deterministic — tests/default)
 ```
 
-- The **`Agent` Protocol** (`flywheel/core/agent.py`) is exactly where a stateful
-  multi-step loop belongs — `stack.md` predicted this: *"a node's `handle()`
-  becomes a loop with state… that's where a `GraphAgent` plugs in, behind the
-  identical `run()` interface."* `CrawlAgent` is that impl. **Hand-rolled** (no
-  LangGraph) — it's a frontier loop, fully traceable via the existing substrate.
-- The **`WebScraperClient` Protocol** is the swap point. The crawler never knows
-  which fetcher backs it, so dropping/adding a provider is a one-line registry
-  change.
-- `lead-sourcer` stays a dumb event handler: it builds a seed URL + goal and
-  calls `CrawlAgent.run(...)` once. Events/topology unchanged.
+**Why goal-agnostic.** The crawl *mechanism* (frontier, best-first, dedupe,
+budgets, same-domain) is identical for every use case; only the *intent* —
+which links to prefer, when to stop, what to extract — varies. So the agent
+takes a ``CrawlGoal`` strategy and stays a pure, reusable Layer 1 capability.
+``lead-sourcer`` builds a ``ContactCrawlGoal`` and passes it in; a market-research
+node would pass a ``KeywordCrawlGoal``; the crawler code is untouched. It lives in
+``flywheel/agents/`` (composite capabilities), **not** ``core/`` (substrate).
+
+- **The composite-agent layer** is exactly where a stateful multi-step loop
+  belongs — `stack.md` predicted this: *"a node's `handle()` becomes a loop with
+  state… that's where a `GraphAgent` plugs in."* `CrawlAgent` is that
+  capability, in `flywheel/agents/`. **Hand-rolled** (no LangGraph) — a frontier
+  loop, fully traceable via the existing substrate. (The generic single-call
+  `Agent` seam in `flywheel/core/agent.py` is a sibling, used by the LLM nodes.)
+- The **`WebScraperClient` Protocol** is the executor swap point. The crawler
+  never knows which fetcher backs it, so dropping/adding a provider is a one-line
+  registry change.
+- `lead-sourcer` stays a dumb event handler: it builds a seed URL + a
+  `ContactCrawlGoal` and calls `crawl(seed, goal)` once. Events/topology
+  unchanged.
 
 ---
 
@@ -197,7 +211,8 @@ stopped. The `/topology` step "output" panel renders it.
 
 ## See also
 
-- `flywheel/core/agent.py` — the `Agent` seam `CrawlAgent` implements.
+- `flywheel/agents/crawl_agent.py` — the goal-agnostic `CrawlAgent` + `CrawlGoal`
+  Protocol + the shipped goals (`ContactCrawlGoal`, `KeywordCrawlGoal`).
 - `flywheel/libraries/web_scraper_client.py` — the `WebScraperClient` Protocol +
   executors.
 - `flywheel/nodes/lead_sourcer.py` — the node that drives the crawl.
