@@ -74,7 +74,7 @@ A Layer 1 node typically calls one or more of these inside its handler.
 | 13 | `linkedin-posting-client` | LinkedIn content posting API (separate from ads) | `post-scheduler`, `post-analytics-collector` | Step 5 |
 | 14 | `billing-client` | Stripe | `subscription-manager` | Step 5 |
 | 15 | `job-board-client` | **Real impl built (free):** public, unauthenticated Greenhouse / Lever / Ashby job-board JSON APIs via `MultiATSJobBoardClient` over a curated roster (`ventures/lead_sources.yaml`); dedup via `LeadStore`. Fake remains the default. | `lead-sourcer` | Lead-gen step |
-| 16 | `web-scraper-client` | **Real impl built (opt-in):** `FirecrawlScraperClient` enriches a career page for contact email/signal; only used when `FIRECRAWL_API_KEY` is set *and* a posting lacks an email. Distinct from `web-search-client` (reads vs. finds URLs). | `lead-sourcer` | Lead-gen step |
+| 16 | `web-scraper-client` | **In-house default:** `HttpxScraperClient` (plain httpx → text + `<a href>` links + emails; no browser) backs an agentic `CrawlAgent` that *navigates* the company site best-first. `FirecrawlScraperClient` is the managed fallback for JS-heavy/anti-bot pages (used when `FIRECRAWL_API_KEY` is set). See `new_docs/scraping-engine.md`. | `lead-sourcer` (via `CrawlAgent`) | Lead-gen step |
 | 17 | `lead-store` | Dedup/cache seam (`InMemoryLeadStore` now; Postgres next). Keeps a live ATS scan from re-surfacing the same posting. | `MultiATSJobBoardClient` | Lead-gen (real) |
 
 > Add a library here only when a node already exists (or is being derived) that

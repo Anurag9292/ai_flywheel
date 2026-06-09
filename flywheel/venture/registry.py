@@ -17,6 +17,7 @@ import os
 from collections.abc import Callable
 from typing import Any
 
+from flywheel.core.crawl_agent import CrawlAgent
 from flywheel.core.node import Node
 from flywheel.libraries.job_board_client import (
     FakeJobBoardClient,
@@ -30,6 +31,7 @@ from flywheel.libraries.semrush_client import FakeSemrushClient, KeywordVolume
 from flywheel.libraries.web_scraper_client import (
     FakeWebScraperClient,
     FirecrawlScraperClient,
+    HttpxScraperClient,
     WebScraperClient,
 )
 from flywheel.libraries.web_search_client import FakeWebSearchClient, SearchResult
@@ -177,20 +179,23 @@ def _lead_sourcer(config: dict[str, Any]) -> Node:
     icp = config.get("icp", "seed/Series-A B2B SaaS founders, 50-500 employees")
     offer = config.get("offer", "$499/mo done-for-you LinkedIn ghostwriting for founders")
 
-    # ── Live mode: real discovery via public ATS APIs + REAL Firecrawl ───────
+    # ── Live mode: real discovery via public ATS APIs + agentic site crawl ───
     # `config: {live: true}` scans the curated roster (ventures/lead_sources.yaml)
-    # over the public Greenhouse/Lever/Ashby JSON APIs (free, no key). Per the
-    # "if live, always real" rule, career-page enrichment uses Firecrawl and
-    # **requires** FIRECRAWL_API_KEY — no fake fallback. The default
-    # (canned/offline) path is unchanged, so tests + /topology stay deterministic.
+    # over the public Greenhouse/Lever/Ashby JSON APIs (free, no key). Enrichment
+    # now *navigates the company's own site* via a best-first CrawlAgent (see
+    # new_docs/scraping-engine.md). The executor is the in-house HttpxScraperClient
+    # by default (no browser, no key) — or Firecrawl when FIRECRAWL_API_KEY is set
+    # (for JS-heavy / anti-bot pages). The default (canned/offline) path is
+    # unchanged, so tests + /topology stay deterministic.
     if config.get("live", False):
-        api_key = _require_env(
-            "FIRECRAWL_API_KEY", "lead-sourcer", "career-page enrichment"
-        )
-        scraper: WebScraperClient = FirecrawlScraperClient(api_key=api_key)
+        scraper: WebScraperClient
+        if os.environ.get("FIRECRAWL_API_KEY"):
+            scraper = FirecrawlScraperClient.from_env() or HttpxScraperClient()
+        else:
+            scraper = HttpxScraperClient()
         return LeadSourcer(
             job_board=MultiATSJobBoardClient(load_roster(), store=InMemoryLeadStore()),
-            scraper=scraper,
+            crawler=CrawlAgent(scraper),
             default_criteria=default_criteria,
             icp=icp,
             offer=offer,

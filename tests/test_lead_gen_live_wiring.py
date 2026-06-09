@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 
+from flywheel.core.crawl_agent import CrawlAgent
 from flywheel.libraries.job_board_client import (
     FakeJobBoardClient,
     MultiATSJobBoardClient,
@@ -21,6 +22,7 @@ from flywheel.libraries.llm_gateway import FakeLLMGateway, LiteLLMGateway
 from flywheel.libraries.web_scraper_client import (
     FakeWebScraperClient,
     FirecrawlScraperClient,
+    HttpxScraperClient,
 )
 from flywheel.nodes.company_needs_analyzer import CompanyNeedsAnalyzer
 from flywheel.nodes.lead_sourcer import LeadSourcer
@@ -48,19 +50,26 @@ def test_default_lead_sourcer_uses_fakes() -> None:
     assert isinstance(node._scraper, FakeWebScraperClient)  # type: ignore[attr-defined]
 
 
-def test_live_lead_sourcer_requires_firecrawl_key(monkeypatch: Any) -> None:
-    # Fail-loud: live lead-sourcer needs FIRECRAWL_API_KEY (no fake fallback).
+def test_live_lead_sourcer_uses_httpx_crawler_without_key(monkeypatch: Any) -> None:
+    # No key needed: live discovery is real (ATS), and the agentic site crawl
+    # uses the in-house HttpxScraperClient (no browser) by default.
     monkeypatch.delenv("FIRECRAWL_API_KEY", raising=False)
-    with pytest.raises(RuntimeError, match="FIRECRAWL_API_KEY"):
-        build_node("lead-sourcer", {"live": True})
-
-
-def test_live_lead_sourcer_uses_real_clients_when_key_set(monkeypatch: Any) -> None:
-    monkeypatch.setenv("FIRECRAWL_API_KEY", "fc-test")
     node = build_node("lead-sourcer", {"live": True})
     assert isinstance(node, LeadSourcer)
     assert isinstance(node._job_board, MultiATSJobBoardClient)  # type: ignore[attr-defined]
-    assert isinstance(node._scraper, FirecrawlScraperClient)  # type: ignore[attr-defined]
+    crawler = node._crawler  # type: ignore[attr-defined]
+    assert isinstance(crawler, CrawlAgent)
+    assert isinstance(crawler._scraper, HttpxScraperClient)  # type: ignore[attr-defined]
+
+
+def test_live_lead_sourcer_uses_firecrawl_executor_when_key_set(monkeypatch: Any) -> None:
+    # When FIRECRAWL_API_KEY is set, the crawl executor is Firecrawl (for
+    # JS-heavy / anti-bot pages) — still behind the same CrawlAgent.
+    monkeypatch.setenv("FIRECRAWL_API_KEY", "fc-test")
+    node = build_node("lead-sourcer", {"live": True})
+    crawler = node._crawler  # type: ignore[attr-defined]
+    assert isinstance(crawler, CrawlAgent)
+    assert isinstance(crawler._scraper, FirecrawlScraperClient)  # type: ignore[attr-defined]
 
 
 # ── live LLM nodes (require OPENAI_API_KEY; real gateway by type) ─────────────

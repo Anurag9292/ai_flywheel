@@ -24,11 +24,13 @@ so the demo "just works" off a single button-press.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import structlog
 from pydantic import BaseModel, Field
 
+from flywheel.core.crawl_agent import CrawlAgent
 from flywheel.core.events import Event
 from flywheel.core.node import NodeContext
 from flywheel.libraries.job_board_client import (
@@ -43,6 +45,24 @@ from flywheel.libraries.web_scraper_client import (
 )
 
 log = structlog.get_logger("flywheel.lead_sourcer")
+
+# URLs that appear in a job description, used to guess the company's own domain.
+_URL_RE = re.compile(r"https?://([A-Za-z0-9.-]+\.[A-Za-z]{2,})")
+# ATS / aggregator / social hosts that are NOT the company's own site.
+_NON_COMPANY_HOSTS = (
+    "lever.co",
+    "greenhouse.io",
+    "ashbyhq.com",
+    "linkedin.com",
+    "github.com",
+    "twitter.com",
+    "x.com",
+    "youtube.com",
+    "facebook.com",
+    "example.com",
+    "paulgraham.com",
+    "ycombinator.com",
+)
 
 
 class CompanyLead(BaseModel):
@@ -88,6 +108,7 @@ class LeadSourcer:
         *,
         job_board: JobBoardClient | None = None,
         scraper: WebScraperClient | None = None,
+        crawler: CrawlAgent | None = None,
         default_criteria: JobSearchCriteria | None = None,
         icp: str = "",
         offer: str = "",
@@ -95,6 +116,10 @@ class LeadSourcer:
     ) -> None:
         self._job_board = job_board or FakeJobBoardClient()
         self._scraper = scraper or FakeWebScraperClient()
+        # When a crawler is injected, enrichment *navigates the company site*
+        # (best-first across links) instead of scraping the single ATS posting
+        # URL. The fake/default path keeps the cheap single-page scrape.
+        self._crawler = crawler
         self._default_criteria = default_criteria or JobSearchCriteria()
         self._icp = icp
         self._offer = offer
@@ -160,21 +185,61 @@ class LeadSourcer:
         return list(by_company.values())
 
     def _maybe_enrich_from_career_page(self, lead: CompanyLead) -> None:
-        """If we still lack an email, scrape the first posting URL for one.
+        """Enrich a lead with contact email + positioning from the company site.
 
-        **Enrichment is best-effort and never fatal.** A scraper failure (e.g. a
-        bad/expired Firecrawl key, a 404, a timeout) is logged and skipped — the
-        lead already has its ATS postings, and the career-page email is only a
-        bonus. One failing enrichment must not blow up the whole run (mirrors the
+        Two modes:
+        - **Crawler injected** → derive the company's *own* domain from the job
+          postings and run a best-first crawl over it (about/contact/careers),
+          gathering an email + a positioning snippet. This is the agentic path
+          (see ``new_docs/scraping-engine.md``).
+        - **No crawler** → cheap single-page scrape of the posting URL (the
+          fake/default path, kept for offline determinism).
+
+        **Best-effort and never fatal.** Any failure is logged and skipped — the
+        lead already has its ATS postings; enrichment is a bonus (mirrors the
         "one bad board must not kill the run" rule in the job-board client).
         """
         if not lead.postings:
             return
+        if lead.contact_email and lead.career_page_snippet:
+            return  # nothing more to gain
+
+        if self._crawler is not None:
+            self._enrich_via_crawl(lead)
+        else:
+            self._enrich_via_single_scrape(lead)
+
+    def _enrich_via_crawl(self, lead: CompanyLead) -> None:
+        seed = self._company_seed_url(lead)
+        if not seed:
+            return
+        try:
+            result = self._crawler.crawl(seed)  # type: ignore[union-attr]
+        except Exception as exc:  # noqa: BLE001 — enrichment is best-effort
+            log.warning(
+                "lead_sourcer.crawl_failed",
+                company=lead.company,
+                seed=seed,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            return
+        log.info(
+            "lead_sourcer.crawled",
+            company=lead.company,
+            seed=seed,
+            pages=result.pages_count,
+            emails=result.emails,
+            stop_reason=result.stop_reason,
+        )
+        lead.career_page_url = seed
+        if not lead.career_page_snippet and result.company_context:
+            lead.career_page_snippet = result.company_context[: self._snippet_chars]
+        if not lead.contact_email and result.emails:
+            lead.contact_email = result.emails[0]
+
+    def _enrich_via_single_scrape(self, lead: CompanyLead) -> None:
         first_url = lead.postings[0].url
         if not first_url:
-            return
-        # Cheap: only scrape when we still need an email *or* a snippet.
-        if lead.contact_email and lead.career_page_snippet:
             return
         try:
             page = self._scraper.scrape(first_url)
@@ -191,3 +256,21 @@ class LeadSourcer:
             lead.career_page_snippet = page.text[: self._snippet_chars]
         if not lead.contact_email and page.emails:
             lead.contact_email = page.emails[0]
+
+    @staticmethod
+    def _company_seed_url(lead: CompanyLead) -> str:
+        """Best-effort: the company's own website root, to seed the crawl.
+
+        We scan the job descriptions for a URL whose host is NOT an ATS /
+        aggregator / social site (those are where the posting lives, not the
+        company). Returns ``https://<host>/`` or ``""`` if none found.
+        """
+        for posting in lead.postings:
+            for host in _URL_RE.findall(posting.description or ""):
+                host_l = host.lower()
+                if any(bad in host_l for bad in _NON_COMPANY_HOSTS):
+                    continue
+                # Normalise: drop a leading www. for the seed root.
+                root = host_l[4:] if host_l.startswith("www.") else host_l
+                return f"https://{root}/"
+        return ""
