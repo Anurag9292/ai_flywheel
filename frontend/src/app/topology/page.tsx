@@ -489,6 +489,28 @@ export default function TopologyPage() {
                       {s.error && <span className="text-rose-400">error</span>}
                     </div>
                   </button>
+                  {/* Node output (payload). Kept outside the <button> so the
+                      <details> toggle is valid HTML. Shows what the node
+                      produced — the post draft, verdict, pitch, etc. */}
+                  {s.emitted && s.emitted.length > 0 && (
+                    <details className="mb-2 ml-1 rounded-md border border-white/10 bg-black/30">
+                      <summary className="cursor-pointer select-none px-2 py-1 text-[10px] text-slate-400 hover:text-slate-200">
+                        output ({s.emitted.length})
+                      </summary>
+                      <div className="space-y-1 px-2 pb-2">
+                        {s.emitted.map((e, j) => (
+                          <div key={j}>
+                            <div className="font-mono text-[10px] text-emerald-300">
+                              {e.type}
+                            </div>
+                            <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded bg-black/40 p-1.5 text-[10px] leading-snug text-slate-300">
+                              {JSON.stringify(e.payload, null, 2)}
+                            </pre>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
                 </li>
               );
             })}

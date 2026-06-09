@@ -16,6 +16,7 @@ stack, swapped in behind this same call site.
 from __future__ import annotations
 
 import json
+import os
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -26,6 +27,40 @@ import structlog
 from flywheel.core.events import Event, EventBus
 
 log = structlog.get_logger("flywheel.trace")
+
+# stdout console log truncates long payload strings to keep the terminal
+# readable; the file + trace.captured event keep FULL payloads. Tunable.
+_DEFAULT_LOG_TRUNCATE = 200
+
+
+def _json_safe(value: Any) -> Any:
+    """Coerce a payload to a JSON-serializable structure.
+
+    Payloads are normally dicts of JSON-able values (Pydantic ``model_dump``
+    output), but we never want a weird value to break ``_capture`` (which runs
+    in a ``finally``). Non-serializable leaves fall back to ``str()``.
+    """
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
+
+
+def _truncate_for_log(obj: Any, limit: int) -> Any:
+    """Deep-copy ``obj`` with long string values capped at ``limit`` chars.
+
+    Used only for the stdout console log. ``limit <= 0`` disables truncation.
+    """
+    if limit > 0 and isinstance(obj, str) and len(obj) > limit:
+        return obj[:limit] + "…"
+    if isinstance(obj, dict):
+        return {k: _truncate_for_log(v, limit) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_truncate_for_log(v, limit) for v in obj]
+    return obj
 
 
 class TraceRecorder:
@@ -118,6 +153,15 @@ class TraceRecorder:
             # Event ids the node emitted — lets the timeline link this step's
             # output to the next step's trigger (parent->child causality).
             "emitted_event_ids": [e.event_id for e in emitted],
+            # FULL payloads — what the node received and produced. Kept in the
+            # file + trace.captured event (the in-memory /api/traces view) so a
+            # run can be inspected/iterated on. The stdout log truncates these
+            # (see below). JSON-safe-coerced so a weird payload can't break us.
+            "trigger_payload": _json_safe(triggering_event.payload),
+            "emitted": [
+                {"type": e.type, "event_id": e.event_id, "payload": _json_safe(e.payload)}
+                for e in emitted
+            ],
             "latency_ms": round(latency_ms, 3),
             # Cost is a placeholder until the llm-gateway lands (Step 2) and can
             # report real token cost through the context.
@@ -125,7 +169,11 @@ class TraceRecorder:
             "error": error,
         }
 
-        log.info("trace.captured", **trace)
+        # stdout: a truncated copy so the console stays readable. The file and
+        # the event keep the full payloads.
+        truncate = int(os.environ.get("FLYWHEEL_TRACE_LOG_TRUNCATE", _DEFAULT_LOG_TRUNCATE))
+        log.info("trace.captured", **_truncate_for_log(trace, truncate))
+
         if self._memory is not None:
             self._memory.append(trace)
         if self._path is not None:
