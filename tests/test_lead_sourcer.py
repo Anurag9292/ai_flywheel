@@ -161,3 +161,36 @@ def test_lead_sourcer_no_fetch_errors_for_fake_board(tmp_path) -> None:
     bus.publish(Event(type="lead-search.requested", venture_id="v", payload={}))
     payload = CompaniesDiscovered.model_validate(out[0].payload)
     assert payload.fetch_errors == []
+
+
+def test_lead_sourcer_enrichment_failure_is_non_fatal(tmp_path) -> None:
+    # A scraper that raises (e.g. a bad Firecrawl key) must NOT crash the run —
+    # the run still emits companies.discovered with the ATS postings.
+    fixtures = [
+        JobPosting(
+            company="Acme",
+            title="Head of Content",
+            url="https://acme.example.com/careers/1",
+            contact_email="",  # forces enrichment
+        )
+    ]
+
+    class _BoomScraper:
+        def scrape(self, url: str):  # noqa: ANN001, ANN201
+            raise RuntimeError("Unauthorized: Invalid token")
+
+    sourcer = LeadSourcer(
+        job_board=FakeJobBoardClient(fixtures=fixtures),
+        scraper=_BoomScraper(),
+    )
+    bus, _ = _runtime(tmp_path, sourcer)
+    out: list[Event] = []
+    bus.subscribe("companies.discovered", out.append)
+
+    bus.publish(Event(type="lead-search.requested", venture_id="v", payload={}))
+
+    # The run survived the scraper blowing up.
+    assert len(out) == 1
+    payload = CompaniesDiscovered.model_validate(out[0].payload)
+    assert payload.companies[0].company == "Acme"
+    assert payload.companies[0].contact_email == ""  # enrichment skipped
