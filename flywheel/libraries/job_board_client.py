@@ -36,10 +36,13 @@ import html
 import re
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+import structlog
 from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
     from flywheel.libraries.lead_store import LeadStore
+
+log = structlog.get_logger("flywheel.lead_sourcer")
 
 # Shared email matcher (same shape used by web-scraper-client). Surfaces
 # ``careers@…`` / ``hiring@…`` from a job description when the ATS includes one.
@@ -343,6 +346,15 @@ def _normalize(ats: str, payload: Any, company: str) -> list[JobPosting]:
     raise ValueError(f"Unknown ATS {ats!r}. Known: {', '.join(_ATS_ENDPOINTS)}")
 
 
+class FetchError(BaseModel):
+    """A per-board failure captured during a scan (for observability)."""
+
+    ats: str = ""
+    token: str = ""
+    url: str = ""
+    error: str = ""  # "<ExceptionType>: <message>"
+
+
 class MultiATSJobBoardClient:
     """Real, free job-board client over public ATS APIs.
 
@@ -353,6 +365,13 @@ class MultiATSJobBoardClient:
 
     The HTTP client is injectable (``fetch_json``) purely so tests can drive it
     with canned JSON and zero network.
+
+    **Observability:** a failing board no longer fails silently. Each fetch/parse
+    failure is logged (``flywheel.lead_sourcer`` via ``structlog``) *and* recorded
+    on :attr:`last_errors` from the most recent ``search_postings`` call, so the
+    dev API / a debugger can show *why* a board returned nothing. Crucially, a
+    missing dependency (the ``lead-gen`` extra not installed) raises a clear
+    :class:`RuntimeError` instead of being swallowed as "a bad board".
     """
 
     def __init__(
@@ -369,18 +388,44 @@ class MultiATSJobBoardClient:
         self._store: LeadStore = store or InMemoryLeadStore()
         self._timeout = timeout
         self._fetch_json = fetch_json or self._default_fetch_json
+        # Per-board failures from the most recent search (cleared on each call).
+        self.last_errors: list[FetchError] = []
 
     def search_postings(self, criteria: JobSearchCriteria) -> list[JobPosting]:
         out: list[JobPosting] = []
+        self.last_errors = []
         for ref in self._roster:
             if len(out) >= criteria.limit:
                 break
             url = _ATS_ENDPOINTS.get(ref.ats, "").format(token=ref.token)
             if not url:
+                log.warning(
+                    "lead_sourcer.unknown_ats", ats=ref.ats, token=ref.token
+                )
+                self.last_errors.append(
+                    FetchError(
+                        ats=ref.ats,
+                        token=ref.token,
+                        error=f"unknown ATS {ref.ats!r}",
+                    )
+                )
                 continue
             try:
                 payload = self._fetch_json(url)
-            except Exception:  # noqa: BLE001 — one bad board must not kill the run
+            except Exception as exc:  # noqa: BLE001
+                # One bad board must not kill the whole scan — but it must be
+                # VISIBLE. We log it and record it; we do NOT silently drop it.
+                detail = f"{type(exc).__name__}: {exc}"
+                log.warning(
+                    "lead_sourcer.fetch_failed",
+                    ats=ref.ats,
+                    token=ref.token,
+                    url=url,
+                    error=detail,
+                )
+                self.last_errors.append(
+                    FetchError(ats=ref.ats, token=ref.token, url=url, error=detail)
+                )
                 continue
             company = ref.name or ref.token
             for posting in _normalize(ref.ats, payload, company):
@@ -392,17 +437,34 @@ class MultiATSJobBoardClient:
                 out.append(posting)
                 if len(out) >= criteria.limit:
                     break
+        log.info(
+            "lead_sourcer.scan_complete",
+            boards=len(self._roster),
+            failed=len(self.last_errors),
+            postings=len(out),
+        )
         return out
 
     def _default_fetch_json(self, url: str) -> Any:
-        """Fetch + parse JSON with retry/backoff. Imports httpx/tenacity lazily."""
-        import httpx
-        from tenacity import (
-            retry,
-            retry_if_exception_type,
-            stop_after_attempt,
-            wait_exponential,
-        )
+        """Fetch + parse JSON with retry/backoff. Imports httpx/tenacity lazily.
+
+        A missing ``lead-gen`` extra surfaces as a clear ``RuntimeError`` (with
+        the install command) rather than a swallowed ImportError — that was a
+        likely cause of "every board fails" in an under-provisioned environment.
+        """
+        try:
+            import httpx
+            from tenacity import (
+                retry,
+                retry_if_exception_type,
+                stop_after_attempt,
+                wait_exponential,
+            )
+        except ImportError as exc:  # pragma: no cover - env-dependent
+            raise RuntimeError(
+                "Live lead-gen needs the 'lead-gen' extra. Install it with: "
+                "uv pip install -e '.[lead-gen]'  (provides httpx + tenacity)."
+            ) from exc
 
         @retry(
             retry=retry_if_exception_type(httpx.HTTPError),
