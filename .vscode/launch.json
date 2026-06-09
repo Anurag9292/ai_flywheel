@@ -3,18 +3,27 @@
   // See the "Debugging the node flow" section in new_docs/visualization.md.
   //
   // Requires the "Python" and "Python Debugger (debugpy)" VS Code extensions.
+  //
+  // Pick a configuration from the Run and Debug dropdown (top-left). The two
+  // "dev API" variants differ only in which venture the server loads:
+  //   - FAKE: ventures/postlineai.yaml — canned, offline, deterministic.
+  //   - LIVE: ventures/postlineai-live.yaml — real, free public-ATS discovery
+  //           (lead-sourcer config: {live: true}). The /topology header shows a
+  //           LIVE / FAKE badge. See new_docs/layer1-nodes.md "Verifying live
+  //           lead-gen on the UI".
   "version": "0.2.0",
   "configurations": [
     {
-      // Run the dev API under the debugger so that clicking "Run desk research"
-      // in the browser pauses at your Python breakpoints.
+      // Run the dev API under the debugger so that clicking a trigger (e.g.
+      // "Run desk research" / "Find outbound leads") in the browser pauses at
+      // your Python breakpoints. This is the default FAKE/offline venture.
       //
       // IMPORTANT: no --reload. Reload spawns a child process that detaches
       // from the debugger and silently skips breakpoints. Restart the session
       // after editing code instead.
       //
       // Run the frontend separately: `cd frontend && npm run dev`.
-      "name": "Debug dev API (uvicorn)",
+      "name": "Debug dev API — FAKE (postlineai)",
       "type": "debugpy",
       "request": "launch",
       "module": "uvicorn",
@@ -24,12 +33,46 @@
       "justMyCode": false
     },
     {
+      // Same dev API, but loads the LIVE venture so lead-sourcer hits the real,
+      // free public ATS APIs (Greenhouse/Lever/Ashby) over the curated roster
+      // in ventures/lead_sources.yaml. The /topology badge will read "LIVE".
+      //
+      // Note: only DISCOVERY is live — the agentic analyzer/pitch nodes still
+      // use canned gateways, so inspect the `companies.discovered` trace step
+      // (or /api/traces) to see real ATS data. Set FIRECRAWL_API_KEY in env to
+      // also enable opt-in career-page email enrichment.
+      "name": "Debug dev API — LIVE (postlineai-live)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["flywheel.devserver.app:app", "--host", "0.0.0.0", "--port", "8000"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "env": {
+        "FLYWHEEL_VENTURE": "postlineai-live"
+        // "FIRECRAWL_API_KEY": "fc-..."  // optional: enable email enrichment
+      }
+    },
+    {
       // Step the entire research.requested -> market-scanner -> thesis-tracker
       // chain end-to-end with no browser/HTTP. Simplest way to watch the flow.
       "name": "Debug a single run (demo_step2)",
       "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/demo_step2.py",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      // Step the outbound lead-gen chain end-to-end (lead-search.requested ->
+      // lead-sourcer -> company-needs-analyzer -> pitch-generator -> review)
+      // with no browser/HTTP. Uses the canned/offline clients by default.
+      "name": "Debug lead-gen run (demo_lead_gen)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/demo_lead_gen.py",
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "justMyCode": false
