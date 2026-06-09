@@ -1,0 +1,81 @@
+# PostlineAI (LIVE) — identical to postlineai.yaml except lead-gen discovery is
+# REAL: the lead-sourcer scans the public ATS APIs (ventures/lead_sources.yaml)
+# instead of canned fixtures.
+#
+# Load it explicitly for a real /topology run:
+#   FLYWHEEL_VENTURE=postlineai-live uvicorn flywheel.devserver.app:app --reload
+#
+# The default venture (postlineai.yaml) stays on fakes so the everyday demo and
+# the test suite remain fast, deterministic and offline. The ONLY difference
+# here is `lead-sourcer config: {live: true}` — every other node (including the
+# agentic ones) keeps its canned/deterministic behavior, so a triggered run is
+# real *discovery* feeding the same downstream analysis + pitch drafting.
+
+name: postlineai
+description: >-
+  B2B LinkedIn ghostwriting for founders/execs. Turns 10 minutes of voice notes
+  a week into a consistent, on-brand LinkedIn presence. (LIVE lead-gen variant:
+  real public ATS discovery.)
+
+domain:
+  icp: "seed/Series-A B2B SaaS founders, 50-500 employees"
+  riskiest_assumption: "founders will pay $499/mo for ghostwritten posts"
+  price_hypothesis_usd: 499
+
+functions:
+  - name: thesis
+    description: Track the venture thesis as evidence arrives, and alert the founder.
+    nodes:
+      - name: thesis-tracker
+      - name: founder-notifier
+
+  - name: market-exploration
+    description: Desk research + the ad-test demand loop (validate before building).
+    nodes:
+      - name: market-scanner
+      - name: ad-campaign-runner
+      - name: ad-analytics-collector
+      - name: signal-analyzer        # shared with customer-success
+
+  - name: discovery
+    description: Customer conversations -> extracted pain.
+    nodes:
+      - name: pain-extractor
+
+  - name: gtm
+    description: The Wizard-of-Oz product flow — capture input, draft, review, publish.
+    nodes:
+      - name: input-intake
+      - name: post-drafter
+        config:
+          impl: human               # Step-7 swaps this to agent-v1 (one line)
+      - name: human-review-queue
+      - name: post-scheduler
+
+  - name: billing
+    description: Subscriptions and payments.
+    nodes:
+      - name: subscription-manager
+
+  - name: customer-success
+    description: Measure engagement + satisfaction; feed signals back to the thesis.
+    nodes:
+      - name: post-analytics-collector
+      - name: customer-survey
+      - name: signal-analyzer        # shared with market-exploration
+
+  - name: lead-generation
+    description: >-
+      Outbound customer acquisition. Scrape job portals / career pages for
+      companies hiring for content / brand / founder-comms roles (a strong
+      "they need ghostwriting now" signal), infer each company's top need,
+      draft tailored email + LinkedIn pitches, and route them through the
+      existing human-review queue for founder approval before send.
+    nodes:
+      - name: lead-sourcer
+        config:
+          live: true                # REAL public ATS discovery (the only diff)
+      - name: company-needs-analyzer
+      - name: pitch-generator
+      - name: human-review-queue     # reused (also in gtm)
+      - name: founder-notifier       # reused (also in thesis)
