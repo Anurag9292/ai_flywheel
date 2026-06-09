@@ -483,18 +483,27 @@ walkthrough. Until then, it doesn't exist.
   the `FLYWHEEL_VENTURE` env var (default `postlineai`, fully offline/fake). Run
 
   ```
-  FLYWHEEL_VENTURE=postlineai-live uvicorn flywheel.devserver.app:app --reload
+  FLYWHEEL_VENTURE=postlineai-live \
+  OPENAI_API_KEY=sk-... FIRECRAWL_API_KEY=fc-... \
+  uvicorn flywheel.devserver.app:app --reload
   ```
 
-  to load `ventures/postlineai-live.yaml`, whose only difference is
-  `lead-sourcer config: {live: true}` — real, free public-ATS discovery over
-  the curated roster (`ventures/lead_sources.yaml`). The `/topology` header shows
-  a **LIVE / FAKE** badge (from `mode` on `GET /api/venture`). Click
-  **"Find outbound leads"** and the `lead-sourcer` trace step now carries **real
-  companies + job titles** pulled live.
+  to load `ventures/postlineai-live.yaml`. Its `lead-generation` function runs
+  **all-or-nothing live** ("if live, always real"):
 
-  > **What "live" covers (and doesn't, yet):** only *discovery* is live. The
-  > downstream agentic nodes (`company-needs-analyzer`, `pitch-generator`) still
-  > use canned gateways, so the *parked pitches* remain the deterministic demo
-  > set until those are also pointed at a real LLM. Inspect the
-  > `companies.discovered` step (or `/api/traces`) to see the real ATS data.
+  - `lead-sourcer` → real public-ATS discovery (free) **+** real Firecrawl
+    enrichment (needs `FIRECRAWL_API_KEY`).
+  - `company-needs-analyzer` / `pitch-generator` → real LLM via `LiteLLMGateway`
+    (needs `OPENAI_API_KEY`; model via `FLYWHEEL_LLM_MODEL`, default
+    `gpt-4o-mini`).
+
+  So the parked **pitches now reflect the real discovered companies**, not the
+  canned demo set. The `/topology` header shows a **LIVE / FAKE** badge (from
+  `mode` on `GET /api/venture`); real cost/latency appear in the traces.
+
+  > **Fail-loud:** the live venture **requires both keys** — the server raises a
+  > clear error at startup if either is missing (no silent fake fallback). The
+  > default `postlineai` venture stays fully offline/free and needs no keys. A
+  > live run spends real tokens (~2 calls + 1/company) + Firecrawl credits and
+  > takes ~10s+, so the frontend may show a "didn't respond" notice — click
+  > **Refresh** to see the completed run.

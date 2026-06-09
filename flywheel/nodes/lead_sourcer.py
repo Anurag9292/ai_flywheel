@@ -61,6 +61,11 @@ class CompaniesDiscovered(BaseModel):
 
     criteria: JobSearchCriteria = Field(default_factory=JobSearchCriteria)
     companies: list[CompanyLead] = Field(default_factory=list)
+    # Venture positioning carried forward so the (downstream) agentic
+    # company-needs-analyzer prompt has ICP + offer context. Rubric-in-payload
+    # pattern — keeps the analyzer node venture-agnostic.
+    icp: str = ""
+    offer: str = ""
     # Per-board failures from a live scan (empty for the fake board). Surfaced so
     # the /topology trace shows *why* a live run found nothing, instead of an
     # opaque empty result. Each item: {ats, token, url, error}.
@@ -81,11 +86,15 @@ class LeadSourcer:
         job_board: JobBoardClient | None = None,
         scraper: WebScraperClient | None = None,
         default_criteria: JobSearchCriteria | None = None,
+        icp: str = "",
+        offer: str = "",
         snippet_chars: int = 280,
     ) -> None:
         self._job_board = job_board or FakeJobBoardClient()
         self._scraper = scraper or FakeWebScraperClient()
         self._default_criteria = default_criteria or JobSearchCriteria()
+        self._icp = icp
+        self._offer = offer
         self._snippet_chars = snippet_chars
 
     def handle(self, event: Event, ctx: NodeContext) -> None:
@@ -104,6 +113,8 @@ class LeadSourcer:
             payload=CompaniesDiscovered(
                 criteria=criteria,
                 companies=companies,
+                icp=self._icp,
+                offer=self._offer,
                 fetch_errors=fetch_errors,
             ).model_dump(),
         )

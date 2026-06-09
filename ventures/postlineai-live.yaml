@@ -1,15 +1,19 @@
-# PostlineAI (LIVE) — identical to postlineai.yaml except lead-gen discovery is
-# REAL: the lead-sourcer scans the public ATS APIs (ventures/lead_sources.yaml)
-# instead of canned fixtures.
+# PostlineAI (LIVE) — the lead-generation function runs against REAL backends
+# (all-or-nothing, "if live, always real"):
+#   - lead-sourcer        -> real public ATS discovery + real Firecrawl enrichment
+#   - company-needs-analyzer / pitch-generator -> real LLM reasoning (litellm)
 #
 # Load it explicitly for a real /topology run:
 #   FLYWHEEL_VENTURE=postlineai-live uvicorn flywheel.devserver.app:app --reload
 #
-# The default venture (postlineai.yaml) stays on fakes so the everyday demo and
-# the test suite remain fast, deterministic and offline. The ONLY difference
-# here is `lead-sourcer config: {live: true}` — every other node (including the
-# agentic ones) keeps its canned/deterministic behavior, so a triggered run is
-# real *discovery* feeding the same downstream analysis + pitch drafting.
+# REQUIRED env (the server fails loud at startup if missing):
+#   OPENAI_API_KEY      — real LLM reasoning (override model: FLYWHEEL_LLM_MODEL).
+#   FIRECRAWL_API_KEY   — career-page enrichment.
+#
+# Everything OUTSIDE the lead-generation function is identical to postlineai.yaml
+# and still uses canned/deterministic variants. The default venture
+# (postlineai.yaml) stays fully fake/offline and needs no keys, so the everyday
+# demo and the test suite remain fast and deterministic.
 
 name: postlineai
 description: >-
@@ -74,8 +78,12 @@ functions:
     nodes:
       - name: lead-sourcer
         config:
-          live: true                # REAL public ATS discovery (the only diff)
+          live: true                # REAL public ATS discovery + REAL Firecrawl
       - name: company-needs-analyzer
+        config:
+          live: true                # REAL LLM reasoning (litellm; needs OPENAI_API_KEY)
       - name: pitch-generator
+        config:
+          live: true                # REAL LLM pitch drafting (needs OPENAI_API_KEY)
       - name: human-review-queue     # reused (also in gtm)
       - name: founder-notifier       # reused (also in thesis)
