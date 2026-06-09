@@ -165,11 +165,29 @@ class LiteLLMGateway:
 
 
 def _response_cost(response: Any) -> float:
-    """Best-effort USD cost from a litellm response (0.0 if unavailable)."""
-    # litellm attaches cost in _hidden_params["response_cost"] for many providers.
+    """Best-effort USD cost from a litellm response (0.0 if unavailable).
+
+    Two sources, in order:
+    1. ``response._hidden_params["response_cost"]`` — litellm pre-computes this
+       for many providers.
+    2. ``litellm.completion_cost(response)`` — computes from model + token usage
+       when (1) is absent (common: it was returning 0.0 in real runs).
+    """
     hidden = getattr(response, "_hidden_params", None) or {}
     cost = hidden.get("response_cost") if isinstance(hidden, dict) else None
     try:
-        return float(cost) if cost is not None else 0.0
+        if cost is not None:
+            value = float(cost)
+            if value > 0.0:
+                return value
     except (TypeError, ValueError):
+        pass
+
+    # Fallback: ask litellm to compute it from the response's usage + model.
+    try:
+        import litellm
+
+        computed = litellm.completion_cost(completion_response=response)
+        return float(computed) if computed else 0.0
+    except Exception:  # noqa: BLE001 — cost is best-effort observability, never fatal
         return 0.0
