@@ -479,6 +479,14 @@ walkthrough. Until then, it doesn't exist.
   runtime (`flywheel/devserver/topology.py`) and triggerable from `/topology`;
   the human-review queue is visible/approvable via `/api/review` and the
   `/topology` review panel.
+- **Run history (durable):** the dev API also **appends every trace row to
+  `traces.jsonl`** (repo root; override with `FLYWHEEL_TRACE_LOG`; gitignored),
+  so runs survive a restart and are greppable — `grep <correlation_id>
+  traces.jsonl` shows a run's steps + per-call latency/cost. The in-memory
+  `/api/traces` view powers the live UI; the file is the record. `/api/reset`
+  (the UI's "Clear all") clears only the in-memory view — the file is kept.
+  *(This is observability, not a queryable store; durable lead/pitch state stays
+  the deferred Postgres slice.)*
 - **Verifying live lead-gen on the UI:** the dev server picks its venture from
   the `FLYWHEEL_VENTURE` env var (default `postlineai`, fully offline/fake). Run
 
