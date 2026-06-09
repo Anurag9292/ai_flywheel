@@ -26,6 +26,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import structlog
 from pydantic import BaseModel, Field
 
 from flywheel.core.events import Event
@@ -40,6 +41,8 @@ from flywheel.libraries.web_scraper_client import (
     FakeWebScraperClient,
     WebScraperClient,
 )
+
+log = structlog.get_logger("flywheel.lead_sourcer")
 
 
 class CompanyLead(BaseModel):
@@ -157,7 +160,14 @@ class LeadSourcer:
         return list(by_company.values())
 
     def _maybe_enrich_from_career_page(self, lead: CompanyLead) -> None:
-        """If we still lack an email, scrape the first posting URL for one."""
+        """If we still lack an email, scrape the first posting URL for one.
+
+        **Enrichment is best-effort and never fatal.** A scraper failure (e.g. a
+        bad/expired Firecrawl key, a 404, a timeout) is logged and skipped — the
+        lead already has its ATS postings, and the career-page email is only a
+        bonus. One failing enrichment must not blow up the whole run (mirrors the
+        "one bad board must not kill the run" rule in the job-board client).
+        """
         if not lead.postings:
             return
         first_url = lead.postings[0].url
@@ -166,7 +176,16 @@ class LeadSourcer:
         # Cheap: only scrape when we still need an email *or* a snippet.
         if lead.contact_email and lead.career_page_snippet:
             return
-        page = self._scraper.scrape(first_url)
+        try:
+            page = self._scraper.scrape(first_url)
+        except Exception as exc:  # noqa: BLE001 — enrichment is best-effort
+            log.warning(
+                "lead_sourcer.enrich_failed",
+                company=lead.company,
+                url=first_url,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            return
         lead.career_page_url = page.url
         if not lead.career_page_snippet:
             lead.career_page_snippet = page.text[: self._snippet_chars]
