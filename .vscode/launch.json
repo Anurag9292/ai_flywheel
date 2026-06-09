@@ -38,11 +38,11 @@
       // discovery, real Firecrawl enrichment, AND real LLM reasoning/pitches.
       // The /topology badge reads "LIVE".
       //
-      // REQUIRED: fill in both keys below or the server fails loud at startup.
-      //   OPENAI_API_KEY    — real LLM reasoning (company-needs-analyzer,
-      //                       pitch-generator). Override model via FLYWHEEL_LLM_MODEL.
-      //   FIRECRAWL_API_KEY — career-page enrichment (lead-sourcer).
-      // A live run spends real tokens + Firecrawl credits, and takes ~10s+.
+      // KEYS: do NOT put secrets here (this file is git-tracked). Copy
+      // .env.example -> .env (gitignored) and set OPENAI_API_KEY +
+      // FIRECRAWL_API_KEY (+ optional FLYWHEEL_LLM_MODEL). The dev server
+      // auto-loads .env at startup. The live venture fails loud if a key is
+      // missing. A live run spends real tokens + Firecrawl credits (~10s+).
       "name": "Debug dev API — LIVE (postlineai-live)",
       "type": "debugpy",
       "request": "launch",
@@ -52,10 +52,8 @@
       "console": "integratedTerminal",
       "justMyCode": false,
       "env": {
-        "FLYWHEEL_VENTURE": "postlineai-live",
-        "OPENAI_API_KEY": "sk-...",
-        "FIRECRAWL_API_KEY": "fc-...",
-        "FLYWHEEL_LLM_MODEL": "gpt-4o-mini"
+        "FLYWHEEL_VENTURE": "postlineai-live"
+        // OPENAI_API_KEY / FIRECRAWL_API_KEY come from .env (see .env.example).
       }
     },
     {
