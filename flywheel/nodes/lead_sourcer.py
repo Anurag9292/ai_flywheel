@@ -61,6 +61,10 @@ class CompaniesDiscovered(BaseModel):
 
     criteria: JobSearchCriteria = Field(default_factory=JobSearchCriteria)
     companies: list[CompanyLead] = Field(default_factory=list)
+    # Per-board failures from a live scan (empty for the fake board). Surfaced so
+    # the /topology trace shows *why* a live run found nothing, instead of an
+    # opaque empty result. Each item: {ats, token, url, error}.
+    fetch_errors: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class LeadSourcer:
@@ -88,10 +92,19 @@ class LeadSourcer:
         criteria = self._criteria_from(event.payload)
         postings = self._job_board.search_postings(criteria)
         companies = self._group_into_leads(postings)
+        # Surface any per-board fetch failures the job board recorded (live
+        # MultiATSJobBoardClient exposes `last_errors`; the fake has none). This
+        # makes a live run's failures visible in the emitted event / trace.
+        fetch_errors = [
+            e.model_dump() if hasattr(e, "model_dump") else dict(e)
+            for e in getattr(self._job_board, "last_errors", [])
+        ]
         ctx.emit(
             type="companies.discovered",
             payload=CompaniesDiscovered(
-                criteria=criteria, companies=companies
+                criteria=criteria,
+                companies=companies,
+                fetch_errors=fetch_errors,
             ).model_dump(),
         )
 

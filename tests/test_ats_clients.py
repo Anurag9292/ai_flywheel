@@ -179,3 +179,51 @@ def test_multi_ats_skips_failing_board() -> None:
     out = client.search_postings(JobSearchCriteria())
     # Lever blew up but the run continued and still returned Acme.
     assert [p.company for p in out] == ["Acme"]
+
+
+def test_multi_ats_records_fetch_failures_in_last_errors() -> None:
+    # A failing board no longer fails silently: it's captured on last_errors
+    # with the ats/token/url and the actual exception detail.
+    def flaky_fetch(url: str) -> Any:
+        if "lever" in url:
+            raise RuntimeError("boom")
+        return _fake_fetch(url)
+
+    roster = [
+        CompanyRef(ats="lever", token="globex", name="Globex"),
+        CompanyRef(ats="greenhouse", token="acme", name="Acme"),
+    ]
+    client = MultiATSJobBoardClient(roster, fetch_json=flaky_fetch)
+    client.search_postings(JobSearchCriteria())
+    assert len(client.last_errors) == 1
+    err = client.last_errors[0]
+    assert err.ats == "lever"
+    assert err.token == "globex"
+    assert "RuntimeError: boom" in err.error
+
+
+def test_multi_ats_last_errors_reset_each_scan() -> None:
+    calls = {"n": 0}
+
+    def fetch(url: str) -> Any:
+        calls["n"] += 1
+        # Fail only on the very first call across the whole test.
+        if calls["n"] == 1:
+            raise RuntimeError("first only")
+        return _fake_fetch(url)
+
+    roster = [CompanyRef(ats="greenhouse", token="acme", name="Acme")]
+    client = MultiATSJobBoardClient(roster, fetch_json=fetch)
+    client.search_postings(JobSearchCriteria())
+    assert len(client.last_errors) == 1  # first scan failed
+    client.search_postings(JobSearchCriteria())
+    assert client.last_errors == []  # second scan succeeded → errors cleared
+
+
+def test_multi_ats_records_unknown_ats() -> None:
+    roster = [CompanyRef(ats="workday", token="acme", name="Acme")]
+    client = MultiATSJobBoardClient(roster, fetch_json=_fake_fetch)
+    out = client.search_postings(JobSearchCriteria())
+    assert out == []
+    assert len(client.last_errors) == 1
+    assert "unknown ATS" in client.last_errors[0].error
