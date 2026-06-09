@@ -13,6 +13,7 @@ behavior exactly. Pass ``config: {canned: false}`` to get a plain node instead.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from typing import Any
 
@@ -24,7 +25,7 @@ from flywheel.libraries.job_board_client import (
     load_roster,
 )
 from flywheel.libraries.lead_store import InMemoryLeadStore
-from flywheel.libraries.llm_gateway import FakeLLMGateway
+from flywheel.libraries.llm_gateway import FakeLLMGateway, LiteLLMGateway
 from flywheel.libraries.semrush_client import FakeSemrushClient, KeywordVolume
 from flywheel.libraries.web_scraper_client import (
     FakeWebScraperClient,
@@ -137,7 +138,24 @@ def _post_drafter(config: dict[str, Any]) -> Node:
     raise ValueError(f"post-drafter impl {impl!r} not implemented yet (Step 7).")
 
 
-# ── Outbound lead-gen (canned demo nodes) ─────────────────────────────────────
+# ── Outbound lead-gen ─────────────────────────────────────────────────────────
+
+
+def _require_env(var: str, node: str, purpose: str) -> str:
+    """Return env var ``var`` or raise a clear error naming the node + fix.
+
+    Used by the LIVE venture: live nodes call real backends and **fail loud** on
+    a missing key rather than silently falling back to fakes (the chosen
+    "if live, always real" semantics). The default offline venture never hits
+    this — it builds the canned/fake variants.
+    """
+    value = os.environ.get(var)
+    if not value:
+        raise RuntimeError(
+            f"Live node {node!r} needs {var} ({purpose}). Set it, or run the "
+            f"default offline venture (FLYWHEEL_VENTURE=postlineai)."
+        )
+    return value
 
 
 def _lead_sourcer(config: dict[str, Any]) -> Node:
@@ -153,32 +171,46 @@ def _lead_sourcer(config: dict[str, Any]) -> Node:
         departments=["Marketing"],
         limit=10,
     )
+    # ICP + offer seed the company-needs prompt downstream (carried in the
+    # companies.discovered payload). From the venture domain in a fuller wiring;
+    # sensible PostlineAI defaults here.
+    icp = config.get("icp", "seed/Series-A B2B SaaS founders, 50-500 employees")
+    offer = config.get("offer", "$499/mo done-for-you LinkedIn ghostwriting for founders")
 
-    # ── Live mode: real, FREE discovery via public ATS APIs ──────────────────
-    # Set `config: {live: true}` on the lead-sourcer node in the venture file to
-    # scan the curated roster (ventures/lead_sources.yaml) over the public
-    # Greenhouse/Lever/Ashby JSON APIs. No key, no cost. Career-page enrichment
-    # (Firecrawl) turns on automatically *iff* FIRECRAWL_API_KEY is set;
-    # otherwise it falls back to the offline fake scraper. The default
+    # ── Live mode: real discovery via public ATS APIs + REAL Firecrawl ───────
+    # `config: {live: true}` scans the curated roster (ventures/lead_sources.yaml)
+    # over the public Greenhouse/Lever/Ashby JSON APIs (free, no key). Per the
+    # "if live, always real" rule, career-page enrichment uses Firecrawl and
+    # **requires** FIRECRAWL_API_KEY — no fake fallback. The default
     # (canned/offline) path is unchanged, so tests + /topology stay deterministic.
     if config.get("live", False):
-        scraper: WebScraperClient = (
-            FirecrawlScraperClient.from_env() or FakeWebScraperClient()
+        api_key = _require_env(
+            "FIRECRAWL_API_KEY", "lead-sourcer", "career-page enrichment"
         )
+        scraper: WebScraperClient = FirecrawlScraperClient(api_key=api_key)
         return LeadSourcer(
             job_board=MultiATSJobBoardClient(load_roster(), store=InMemoryLeadStore()),
             scraper=scraper,
             default_criteria=default_criteria,
+            icp=icp,
+            offer=offer,
         )
 
     return LeadSourcer(
         job_board=FakeJobBoardClient(),
         scraper=FakeWebScraperClient(),
         default_criteria=default_criteria,
+        icp=icp,
+        offer=offer,
     )
 
 
 def _company_needs_analyzer(config: dict[str, Any]) -> Node:
+    if config.get("live", False):
+        # Real reasoning over the real discovered companies. Requires a provider
+        # key (OPENAI_API_KEY); fail loud if absent.
+        _require_env("OPENAI_API_KEY", "company-needs-analyzer", "live reasoning")
+        return CompanyNeedsAnalyzer(gateway=LiteLLMGateway())
     if not config.get("canned", True):
         return CompanyNeedsAnalyzer()
     gateway = FakeLLMGateway()
@@ -233,6 +265,10 @@ def _company_needs_analyzer(config: dict[str, Any]) -> Node:
 
 
 def _pitch_generator(config: dict[str, Any]) -> Node:
+    if config.get("live", False):
+        # Real, tailored pitches for the real companies. Requires OPENAI_API_KEY.
+        _require_env("OPENAI_API_KEY", "pitch-generator", "live pitch drafting")
+        return PitchGenerator(gateway=LiteLLMGateway())
     if not config.get("canned", True):
         return PitchGenerator()
     gateway = FakeLLMGateway()

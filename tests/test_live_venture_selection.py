@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from flywheel.devserver.topology import (
     DEFAULT_VENTURE,
     build_runtime,
@@ -72,18 +74,33 @@ def test_live_venture_is_live_mode() -> None:
     assert {f.name for f in venture.functions} == {f.name for f in default.functions}
 
 
+def _live_keys(monkeypatch: Any) -> None:
+    # LIVE is fail-loud: building the live runtime needs both keys present. We
+    # set dummy values so node *construction* succeeds; no backend is called
+    # (we only assert types / composition).
+    monkeypatch.setenv("FIRECRAWL_API_KEY", "fc-test")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+
 def test_live_runtime_builds_multi_ats_lead_sourcer(monkeypatch: Any) -> None:
-    # No FIRECRAWL_API_KEY → discovery is real (ATS) but enrichment is the fake
-    # scraper. Crucially we only check the *type* — no fetch is performed.
-    monkeypatch.delenv("FIRECRAWL_API_KEY", raising=False)
+    _live_keys(monkeypatch)
     runtime, _, _ = build_runtime(venture_name="postlineai-live")
     node = _lead_sourcer(runtime)
+    # Real ATS discovery — asserted by type, no network performed.
     assert isinstance(node._job_board, MultiATSJobBoardClient)  # type: ignore[attr-defined]
 
 
-def test_live_venture_registers_same_node_set_as_default() -> None:
-    # The live variant must be identical in roster — only lead-sourcer config
+def test_live_runtime_missing_keys_fail_loud(monkeypatch: Any) -> None:
+    monkeypatch.delenv("FIRECRAWL_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    with pytest.raises(RuntimeError):
+        build_runtime(venture_name="postlineai-live")
+
+
+def test_live_venture_registers_same_node_set_as_default(monkeypatch: Any) -> None:
+    # The live variant must register the same nodes — only lead-gen config
     # differs — so the topology graph/UI looks the same.
+    _live_keys(monkeypatch)
     live, _, _ = build_runtime(venture_name="postlineai-live")
     default, _, _ = build_runtime(venture_name="postlineai")
     assert {n.name for n in live.nodes} == {n.name for n in default.nodes}

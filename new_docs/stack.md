@@ -38,8 +38,8 @@ These are sound and have day-one value — no reason to defer:
 | **Python 3.12+** | Backend language | AI/ML ecosystem is Python-first. |
 | **Pydantic** | Event model + library protocols | The `Event` contract and tool interfaces want exactly this. |
 | **structlog** | The `trace-recorder` substrate | Substrate *is* structured logging that also emits `trace.captured`. |
-| **litellm** | `llm-gateway` real impl | Already the seam we designed for agentic nodes. |
-| **httpx, tenacity** | Real library clients | LinkedIn / Slack / analytics clients need these. **Now in use:** the real `job-board-client` (free public ATS APIs) ships behind the optional `lead-gen` extra. |
+| **litellm** | `llm-gateway` real impl | **Now built:** `LiteLLMGateway` (in the `lead-gen` extra). Live lead-gen nodes use it; requires a provider key (e.g. `OPENAI_API_KEY`). Real cost/latency now flow into traces. |
+| **httpx, tenacity** | Real library clients | **Promoted to core deps** (no longer in an extra) so the real `job-board-client` (free public ATS APIs) never fails on a missing dep. The heavier `litellm` / `firecrawl-py` stay opt-in in `lead-gen`. |
 | **Public ATS APIs** | `job-board-client` real impl (lead-gen discovery) | Free, unauthenticated Greenhouse / Lever / Ashby job-board JSON. The first *real* external I/O — no key, no cost. |
 | **Firecrawl** | `web-scraper-client` real impl (career-page enrichment) | **Opt-in** (only if `FIRECRAWL_API_KEY` set). Free tier covers a curated roster; the only potentially-paid lead-gen piece. Crawl4AI is the self-host fallback if cost/volume ever justify it. |
 | **ruff, mypy, pytest** | Tooling | Nothing to defer. |
