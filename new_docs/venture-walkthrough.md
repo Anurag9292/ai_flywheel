@@ -210,6 +210,84 @@ small, reusable node.
 
 ---
 
+## Step 4.5 — Outbound: who's actively hiring for what we already do?
+
+The ad test from Step 4 produced demand signal in aggregate, but the founder
+also wants the *cheapest, highest-intent* outbound channel: companies that are
+*right now* hiring for "Head of Content", "Founder Brand Lead",
+"Content Marketing Manager" — i.e., they have already decided they need help
+with exactly the thing PostlineAI sells. A live job posting is the strongest
+buying signal a B2B venture can read for free.
+
+> *The venture needs to: find the companies hiring for content / brand /
+> founder-comms roles, gather enough about each one to infer what they most
+> need, and draft a tailored email + LinkedIn pitch — then route it through
+> the existing review queue for the founder to send.*
+
+→ **Derives Layer 1 library tool:** `job-board-client` — wraps a job
+aggregator (Indeed / LinkedIn Jobs / Greenhouse / Lever, or a managed scraping
+provider). Returns structured `JobPosting`s, including a `contact_email` when
+the source exposes one (some career pages and ATSs do).
+
+→ **Derives Layer 1 library tool:** `web-scraper-client` — fetches and
+extracts text from a URL. Distinct from `web-search-client`: that one *finds*
+URLs, this one *reads* them. Real impl wraps a managed scraping/extraction
+provider (e.g. Firecrawl, ScrapingBee). Used by `lead-sourcer` to enrich a
+company with a career-page email when the board didn't expose one.
+
+→ **Derives Layer 1 node:** `lead-sourcer` — reacts to
+`lead-search.requested`, calls `job-board-client` with the venture's criteria
+(seeded from the ICP, overridable per-event), groups postings by company,
+optionally enriches via `web-scraper-client`, emits `companies.discovered`.
+Dumb stitching, no LLM.
+
+> *The venture needs to: read each discovered company's postings and infer the
+> top need + the angle a tailored pitch should open with.*
+
+→ **Derives Layer 1 node:** `company-needs-analyzer` (agentic) — reacts to
+`companies.discovered`, calls `llm-gateway`, emits `company.needs.profiled`
+carrying a structured per-company `top_need`, `buying_signals`, `fit_score`,
+and a one-line `pitch_angle`.
+
+> *The venture needs to: turn each company's inferred need into a tailored
+> outreach — short email body **and** a LinkedIn DM variant — that opens with
+> the angle and ends with a clear ask.*
+
+→ **Derives Layer 1 node:** `pitch-generator` (agentic) — reacts to
+`company.needs.profiled`, calls `llm-gateway`, emits `pitch.drafted` **per
+company**, each tagged `requires_human=true`.
+
+> *The venture needs to: keep the founder in the loop on every pitch before any
+> send — Wizard-of-Oz outreach.*
+
+The `human-review-queue` already exists (it'll be derived in Step 5 below; in
+the actual implementation order it predates this step). We *reuse* it — by
+extending its `result_map` (registry-time wiring, no node-code change) with
+`pitch.drafted → pitch.approved`. The same review surface now parks both
+posts (Step 5) and pitches. On approval, the queue re-emits `pitch.approved`
+under the same `correlation_id`; `founder-notifier` (also reused) surfaces it
+to the founder's inbox.
+
+**New this step:** `job-board-client`, `web-scraper-client` (libs),
+`lead-sourcer`, `company-needs-analyzer`, `pitch-generator` (nodes).
+**Reuses:** `human-review-queue`, `founder-notifier`, `llm-gateway`. **No
+node-code changes** to extend the review queue — only its construction-time
+`result_map`.
+
+The crucial reuse-payoff: the review/approval rails the venture invented for
+"AI-drafted post → human approves" work *unchanged* for "AI-drafted pitch →
+human approves." The founder lives in one inbox. That's the Layer-1-grows-by-
+demand promise paying out within a single venture.
+
+> **Deferred (per `stack.md`):** real job-board / scraping APIs (today: fakes
+> behind the same Protocols), durable lead/company state (Postgres trigger),
+> scheduled re-scraping (`tick.daily` / Temporal), rate-limiting + proxies,
+> and a future `outreach-sender` node + `outreach-client` library that would
+> auto-send approved pitches. Today the chain stops at the human-approved
+> pitch.
+
+---
+
 ## Step 5 — Wizard-of-Oz: the founder ghostwrites manually for 3 paying customers
 
 Three people from the waitlist agree to a 30-day trial at $299/mo. The founder
