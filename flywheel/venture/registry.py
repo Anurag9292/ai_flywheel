@@ -20,10 +20,17 @@ from flywheel.core.node import Node
 from flywheel.libraries.job_board_client import (
     FakeJobBoardClient,
     JobSearchCriteria,
+    MultiATSJobBoardClient,
+    load_roster,
 )
+from flywheel.libraries.lead_store import InMemoryLeadStore
 from flywheel.libraries.llm_gateway import FakeLLMGateway
 from flywheel.libraries.semrush_client import FakeSemrushClient, KeywordVolume
-from flywheel.libraries.web_scraper_client import FakeWebScraperClient
+from flywheel.libraries.web_scraper_client import (
+    FakeWebScraperClient,
+    FirecrawlScraperClient,
+    WebScraperClient,
+)
 from flywheel.libraries.web_search_client import FakeWebSearchClient, SearchResult
 from flywheel.nodes.ad_analytics_collector import AdAnalyticsCollector
 from flywheel.nodes.ad_campaign_runner import AdCampaignRunner
@@ -146,6 +153,24 @@ def _lead_sourcer(config: dict[str, Any]) -> Node:
         departments=["Marketing"],
         limit=10,
     )
+
+    # ── Live mode: real, FREE discovery via public ATS APIs ──────────────────
+    # Set `config: {live: true}` on the lead-sourcer node in the venture file to
+    # scan the curated roster (ventures/lead_sources.yaml) over the public
+    # Greenhouse/Lever/Ashby JSON APIs. No key, no cost. Career-page enrichment
+    # (Firecrawl) turns on automatically *iff* FIRECRAWL_API_KEY is set;
+    # otherwise it falls back to the offline fake scraper. The default
+    # (canned/offline) path is unchanged, so tests + /topology stay deterministic.
+    if config.get("live", False):
+        scraper: WebScraperClient = (
+            FirecrawlScraperClient.from_env() or FakeWebScraperClient()
+        )
+        return LeadSourcer(
+            job_board=MultiATSJobBoardClient(load_roster(), store=InMemoryLeadStore()),
+            scraper=scraper,
+            default_criteria=default_criteria,
+        )
+
     return LeadSourcer(
         job_board=FakeJobBoardClient(),
         scraper=FakeWebScraperClient(),

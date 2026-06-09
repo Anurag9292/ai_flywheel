@@ -15,7 +15,7 @@ without network.
 from __future__ import annotations
 
 import re
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
@@ -61,6 +61,65 @@ class FakeWebScraperClient:
         if not page.emails:
             page = page.model_copy(update={"emails": _extract_emails(page.text)})
         return page
+
+
+class FirecrawlScraperClient:
+    """Real career-page scraper backed by Firecrawl (OPT-IN).
+
+    This is the *only* potentially-paid piece of lead-gen. Discovery via the ATS
+    APIs is free; this enrichment layer is invoked by ``lead-sourcer`` **only
+    when a posting lacks a contact email**, so on a curated roster it stays well
+    within Firecrawl's free tier.
+
+    Reads ``FIRECRAWL_API_KEY`` from the environment (or takes an explicit key).
+    The ``firecrawl-py`` SDK is imported lazily so nothing requires it unless a
+    venture actually wires this client in. The ``client`` is injectable purely so
+    tests can drive it with a stub and zero network.
+    """
+
+    def __init__(
+        self,
+        *,
+        api_key: str | None = None,
+        client: object | None = None,
+    ) -> None:
+        self._injected = client
+        self._api_key = api_key
+        self._client = client  # may be set lazily on first scrape
+
+    @classmethod
+    def from_env(cls) -> FirecrawlScraperClient | None:
+        """Build from ``FIRECRAWL_API_KEY`` if present, else ``None`` (opt-in)."""
+        import os
+
+        key = os.environ.get("FIRECRAWL_API_KEY")
+        return cls(api_key=key) if key else None
+
+    def _get_client(self) -> object:
+        if self._client is None:
+            # lazy import: only when actually scraping live. The SDK is an
+            # optional dep (the ``lead-gen`` extra) so mypy can't see it in the
+            # default/dev env — ignore the missing stub.
+            from firecrawl import Firecrawl  # type: ignore[import-not-found]
+
+            self._client = Firecrawl(api_key=self._api_key)
+        return self._client
+
+    def scrape(self, url: str) -> ScrapedPage:
+        client = self._get_client()
+        # SDK returns an object/dict with markdown + metadata. We read defensively
+        # so a minor SDK shape change can't crash the lead-gen run.
+        doc: Any = client.scrape(url, formats=["markdown"])  # type: ignore[attr-defined]
+        text = _read_field(doc, "markdown") or _read_field(doc, "text") or ""
+        title = _read_field(_read_field(doc, "metadata") or {}, "title") or url
+        return ScrapedPage(url=url, title=title, text=text, emails=_extract_emails(text))
+
+
+def _read_field(obj: Any, name: str) -> Any:
+    """Read ``name`` from a dict or an attribute-style object (SDK-agnostic)."""
+    if isinstance(obj, dict):
+        return obj.get(name)
+    return getattr(obj, name, None)
 
 
 def _extract_emails(text: str) -> list[str]:

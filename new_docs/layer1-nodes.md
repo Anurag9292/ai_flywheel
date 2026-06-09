@@ -73,8 +73,9 @@ A Layer 1 node typically calls one or more of these inside its handler.
 | 12 | `inbound-collector` | Webhook + email-to-bucket | `input-intake` | Step 5 |
 | 13 | `linkedin-posting-client` | LinkedIn content posting API (separate from ads) | `post-scheduler`, `post-analytics-collector` | Step 5 |
 | 14 | `billing-client` | Stripe | `subscription-manager` | Step 5 |
-| 15 | `job-board-client` | Job aggregator (Indeed / LinkedIn Jobs / Greenhouse / Lever) | `lead-sourcer` | Lead-gen step |
-| 16 | `web-scraper-client` | Managed page-scrape/extract (Firecrawl / ScrapingBee). Distinct from `web-search-client`: this *reads* a URL, that one *finds* URLs. | `lead-sourcer` | Lead-gen step |
+| 15 | `job-board-client` | **Real impl built (free):** public, unauthenticated Greenhouse / Lever / Ashby job-board JSON APIs via `MultiATSJobBoardClient` over a curated roster (`ventures/lead_sources.yaml`); dedup via `LeadStore`. Fake remains the default. | `lead-sourcer` | Lead-gen step |
+| 16 | `web-scraper-client` | **Real impl built (opt-in):** `FirecrawlScraperClient` enriches a career page for contact email/signal; only used when `FIRECRAWL_API_KEY` is set *and* a posting lacks an email. Distinct from `web-search-client` (reads vs. finds URLs). | `lead-sourcer` | Lead-gen step |
+| 17 | `lead-store` | Dedup/cache seam (`InMemoryLeadStore` now; Postgres next). Keeps a live ATS scan from re-surfacing the same posting. | `MultiATSJobBoardClient` | Lead-gen (real) |
 
 > Add a library here only when a node already exists (or is being derived) that
 > needs to call it. Don't pre-create wrappers "in case."
@@ -446,11 +447,28 @@ walkthrough. Until then, it doesn't exist.
     pitch.approved`) and `founder-notifier` with **zero node-code changes**.
     Closes the loop `lead-search.requested → companies.discovered →
     company.needs.profiled → pitch.drafted (parked) → pitch.approved`.
-  - **Deferred within lead-gen (documented):** real job-board/scraping APIs
-    (today: fakes); durable lead/company state (Postgres trigger); scheduled
-    re-scraping (`tick.daily`, Temporal trigger); rate-limiting / proxies; and
-    a future `outreach-sender` node + `outreach-client` library (today the
-    chain stops at human-approved pitch).
+  - **Lead-gen discovery is now REAL and FREE:** `job-board-client` has a real
+    `MultiATSJobBoardClient` over the public, unauthenticated Greenhouse / Lever
+    / Ashby job-board JSON APIs (no key, no cost), scanning a curated roster
+    (`ventures/lead_sources.yaml`), normalizing each ATS to `JobPosting`,
+    filtering by criteria, and deduplicating via a `LeadStore`
+    (`InMemoryLeadStore` now). `web-scraper-client` has a real
+    `FirecrawlScraperClient` for career-page enrichment, wired **opt-in**: it
+    activates only when `FIRECRAWL_API_KEY` is set *and* a posting lacks an
+    email, else it falls back to the offline fake. Real I/O uses `httpx` +
+    `tenacity` (the optional `lead-gen` extra), imported lazily — so the default
+    (fake) path, tests, CI and `/topology` stay offline and deterministic. The
+    `lead-sourcer` node, events, and venture topology are **unchanged**; live
+    mode is a one-line venture config (`config: {live: true}`) selected in the
+    registry.
+  - **Deferred within lead-gen (documented):** durable lead/company + "already
+    pitched" state → **Postgres/Neon** behind the `LeadStore` Protocol (the
+    immediate next slice — first real durable-state need); scheduled re-scraping
+    (`tick.daily`) + durable retries at volume → **Temporal**; ATS
+    auto-detection (grow the roster from company names); **Crawl4AI** as a
+    self-hosted scraper only if Firecrawl cost/volume ever justifies owning the
+    browser stack; and a future `outreach-sender` node + `outreach-client`
+    library (today the chain stops at human-approved pitch).
   - Everything from Step 7 onward remains a derived requirement, not yet built.
 - **Next slices:** Step 7 — swap `post-drafter`'s human impl for a real LLM
   agent (the `Drafter` seam is already in place) + `voice-profile-builder`,
