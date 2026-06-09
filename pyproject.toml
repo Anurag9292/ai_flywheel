@@ -17,6 +17,17 @@ devserver = [
     "fastapi>=0.110",
     "uvicorn>=0.29",
 ]
+# Real lead-gen I/O (per new_docs/stack.md "lazy arrival"). The fakes need none
+# of this; these only load when a venture runs the lead-sourcer `live`:
+#   - httpx + tenacity: real ATS HTTP clients (free Greenhouse/Lever/Ashby APIs)
+#     with retry/backoff.
+#   - firecrawl-py: OPT-IN career-page enrichment (only used if FIRECRAWL_API_KEY
+#     is set). Discovery via ATS APIs is free and needs no key.
+lead-gen = [
+    "httpx>=0.27",
+    "tenacity>=8.2",
+    "firecrawl-py>=2.0",
+]
 dev = [
     "pytest>=8.0",
     "ruff>=0.5",
@@ -24,6 +35,7 @@ dev = [
     "fastapi>=0.110",
     "uvicorn>=0.29",
     "httpx>=0.27",
+    "tenacity>=8.2",
     "types-PyYAML>=6.0",
     # For VS Code Python debugging (the extension bundles its own copy too,
     # but having it in the venv makes the env self-sufficient).

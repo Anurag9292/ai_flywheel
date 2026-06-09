@@ -1,0 +1,24 @@
+# Curated lead-gen roster — the companies the live MultiATSJobBoardClient scans.
+#
+# Public ATS job-board APIs are PER-COMPANY: you must know each company's board
+# token (the slug in its hosted job-board URL). These endpoints are free and
+# unauthenticated:
+#   greenhouse: https://boards-api.greenhouse.io/v1/boards/{token}/jobs?content=true
+#   lever:      https://api.lever.co/v0/postings/{token}?mode=json
+#   ashby:      https://api.ashbyhq.com/posting-api/job-board/{token}
+#
+# Find a token from a company's job listing URL:
+#   boards.greenhouse.io/{token}/...   jobs.lever.co/{token}/...   jobs.ashbyhq.com/{token}/...
+#
+# This is the doctrine-friendly minimum: a small, explicit, hand-curated list.
+# ATS auto-detection (guessing tokens from company names) is a documented later
+# step. Add/remove rows freely — no code change needed.
+#
+# NOTE: the tokens below are well-known real boards used as sane defaults for a
+# live run. Curate this to companies that match PostlineAI's ICP (B2B SaaS
+# hiring for content / brand / founder-comms roles) for the best signal.
+
+companies:
+  - { ats: greenhouse, token: stripe,   name: Stripe }
+  - { ats: lever,      token: netflix,  name: Netflix }
+  - { ats: ashby,      token: ramp,     name: Ramp }
