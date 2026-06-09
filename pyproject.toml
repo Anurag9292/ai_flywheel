@@ -41,6 +41,11 @@ dev = [
     "fastapi>=0.110",
     "uvicorn>=0.29",
     "types-PyYAML>=6.0",
+    # Auto-load a gitignored repo-root .env for the dev server + demos, so keys
+    # (OPENAI_API_KEY, FIRECRAWL_API_KEY, FLYWHEEL_VENTURE, ...) don't have to be
+    # exported by hand or pasted into the tracked launch.json. Dev-only; loading
+    # is guarded so prod/CI without dotenv is unaffected.
+    "python-dotenv>=1.0",
     # For VS Code Python debugging (the extension bundles its own copy too,
     # but having it in the venv makes the env self-sufficient).
     "debugpy>=1.8",

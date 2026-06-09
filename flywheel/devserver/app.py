@@ -31,14 +31,22 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from flywheel.core.events import Event
-from flywheel.devserver.topology import (
+from flywheel.env import load_dotenv_if_present
+
+# Load a gitignored repo-root .env BEFORE the runtime is built, so FLYWHEEL_VENTURE
+# / OPENAI_API_KEY / FIRECRAWL_API_KEY are in the environment when the registry
+# reads them. Shell + debugger env still win (override=False). No-op without
+# python-dotenv or a .env file.
+load_dotenv_if_present()
+
+from flywheel.core.events import Event  # noqa: E402  (after dotenv load)
+from flywheel.devserver.topology import (  # noqa: E402
     build_runtime,
     find_review_queue,
     load_default_venture,
     runtime_mode,
 )
-from flywheel.venture.view import function_view, lint_venture
+from flywheel.venture.view import function_view, lint_venture  # noqa: E402
 
 app = FastAPI(
     title="AI Flywheel — Dev Introspection",

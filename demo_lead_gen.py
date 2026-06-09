@@ -27,8 +27,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from flywheel.core.events import Event
-from flywheel.devserver.topology import build_runtime, find_review_queue
+from flywheel.env import load_dotenv_if_present
+
+# Pick up a repo-root .env so a `FLYWHEEL_VENTURE=postlineai-live` demo run finds
+# its keys. No-op for the default (fake) venture, which needs none.
+load_dotenv_if_present()
+
+from flywheel.core.events import Event  # noqa: E402
+from flywheel.devserver.topology import build_runtime, find_review_queue  # noqa: E402
 
 TRACE_LOG = Path("traces.jsonl")
 VENTURE = "postlineai"
