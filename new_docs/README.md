@@ -104,6 +104,10 @@ the whole game.
 6. **`venture-file.md`** — how a venture is *defined*: the `ventures/*.yaml`
    file and the **function** grouping layer (declarative departments, not
    orchestrators) that composes Layer 1 nodes into a venture.
+7. **`scraping-engine.md`** — the agentic, provider-agnostic crawler: how
+   `lead-sourcer` *navigates* a company site (best-first link following) to
+   enrich a lead, the SOTA it draws on, and the `httpx`/Firecrawl/Playwright
+   executor seam.
 
 ---
 
