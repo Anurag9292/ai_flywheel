@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from flywheel.core.crawl_agent import CrawlAgent
+from flywheel.agents.crawl_agent import CrawlAgent
 from flywheel.libraries.job_board_client import (
     FakeJobBoardClient,
     MultiATSJobBoardClient,

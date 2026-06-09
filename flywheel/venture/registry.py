@@ -17,7 +17,7 @@ import os
 from collections.abc import Callable
 from typing import Any
 
-from flywheel.core.crawl_agent import CrawlAgent
+from flywheel.agents.crawl_agent import CrawlAgent
 from flywheel.core.node import Node
 from flywheel.libraries.job_board_client import (
     FakeJobBoardClient,
