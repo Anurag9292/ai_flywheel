@@ -8,12 +8,17 @@ import {
 } from "@/lib/topology-api";
 
 /**
- * The visible side of the Wizard-of-Oz human-in-the-loop (Step 5).
+ * The visible side of the Wizard-of-Oz human-in-the-loop.
  *
- * Lists drafts parked in the human-review-queue (events tagged requires_human),
+ * Lists items parked in the human-review-queue (events tagged requires_human),
  * lets the founder edit the text and approve. Approving publishes
- * review.approved, which resumes the chain (post.approved → post-scheduler →
- * post.published) — the run then animates in the timeline via onApproved.
+ * review.approved, which resumes the chain. Two kinds of item park here today:
+ *
+ *  - post.drafted  (Step 5) → resumes as post.approved → post-scheduler.
+ *  - pitch.drafted (lead-gen) → resumes as pitch.approved (outbound pitch).
+ *
+ * The panel is type-aware so each reads naturally (a post is keyed by customer;
+ * a pitch by company, and shows the target email when one was found).
  */
 export default function ReviewPanel({
   onApproved,
@@ -81,9 +86,10 @@ export default function ReviewPanel({
           <span className="font-normal text-slate-500">(human-in-the-loop)</span>
         </h2>
         <p className="text-xs text-slate-500">
-          No drafts awaiting approval. Trigger{" "}
-          <span className="text-emerald-300">Customer sends input</span> to create
-          one.
+          No items awaiting approval. Trigger{" "}
+          <span className="text-emerald-300">Customer sends input</span> (a post)
+          or <span className="text-emerald-300">Find outbound leads</span> (pitches)
+          to create some.
         </p>
       </div>
     );
@@ -105,12 +111,19 @@ export default function ReviewPanel({
           >
             <div className="mb-1 flex items-center justify-between">
               <span className="font-mono text-[10px] text-slate-400">
-                {String(item.payload.customer_id ?? "—")} · {item.type}
+                {subjectFor(item)} · {item.type}
               </span>
               <span className="font-mono text-[10px] text-slate-500">
                 {item.event_id.slice(0, 8)}
               </span>
             </div>
+            {item.type === "pitch.drafted" && (
+              <p className="mb-1 font-mono text-[10px] text-slate-500">
+                {item.payload.contact_email
+                  ? `→ ${String(item.payload.contact_email)}`
+                  : "→ (no email — LinkedIn DM)"}
+              </p>
+            )}
             <textarea
               value={drafts[item.event_id] ?? defaultDraft(item)}
               onChange={(e) =>
@@ -125,7 +138,11 @@ export default function ReviewPanel({
               disabled={busy !== null}
               className="w-full rounded-md border border-emerald-400/40 bg-emerald-500/10 px-2 py-1 text-xs font-medium text-emerald-100 hover:bg-emerald-500/20 disabled:opacity-50"
             >
-              {busy === item.event_id ? "Approving…" : "✓ Approve & publish"}
+              {busy === item.event_id
+                ? "Approving…"
+                : item.type === "pitch.drafted"
+                  ? "✓ Approve pitch"
+                  : "✓ Approve & publish"}
             </button>
           </div>
         ))}
@@ -135,8 +152,26 @@ export default function ReviewPanel({
   );
 }
 
-// The founder edits from the placeholder draft the HumanDrafter produced.
+// The founder edits from the text the upstream node produced. For a post that's
+// the placeholder draft; for a pitch we prefer the drafted email body (falling
+// back to the LinkedIn message), so the editable text is the real outreach copy.
 function defaultDraft(item: ReviewItem): string {
+  if (item.type === "pitch.drafted") {
+    const email = item.payload.email_body;
+    if (typeof email === "string" && email) return email;
+    const li = item.payload.linkedin_message;
+    if (typeof li === "string" && li) return li;
+  }
   const d = item.payload.draft;
   return typeof d === "string" ? d : "";
+}
+
+// A short, human-meaningful label for a parked item: company for a pitch,
+// customer for a post (falling back to an em dash).
+function subjectFor(item: ReviewItem): string {
+  const key =
+    item.type === "pitch.drafted"
+      ? item.payload.company
+      : item.payload.customer_id;
+  return String(key ?? "—");
 }

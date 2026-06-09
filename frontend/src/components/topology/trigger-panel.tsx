@@ -82,6 +82,20 @@ const EVENT_CATALOG: Record<
     reacts: "thesis-tracker → founder-notifier",
     payload: { nps: 9, comment: "saves me hours" },
   },
+  "lead-search.requested": {
+    reacts:
+      "lead-sourcer → company-needs-analyzer → pitch-generator → human-review-queue (parks each pitch)",
+    // Empty payload uses the registry's canned default criteria (PostlineAI ICP:
+    // marketing/content/founder-comms keywords). Override `criteria` to focus
+    // on a different role / location / keyword set.
+    payload: {
+      criteria: {
+        keywords: ["content", "brand", "founder", "linkedin"],
+        departments: ["Marketing"],
+        limit: 10,
+      },
+    },
+  },
 };
 
 const KNOWN_EVENT_TYPES = Object.keys(EVENT_CATALOG);
@@ -96,6 +110,7 @@ const PRESETS: { label: string; type: string; hint: string }[] = [
   { label: "Run desk research", type: "research.requested", hint: "market-scanner → thesis-tracker" },
   { label: "Capture a discovery call", type: "transcript.captured", hint: "pain-extractor → thesis-tracker" },
   { label: "Run the ad test", type: "campaign.requested", hint: "ads → analyze → decide loop" },
+  { label: "Find outbound leads", type: "lead-search.requested", hint: "scrape jobs → infer needs → draft pitches" },
   { label: "Customer sends input", type: "inbound.received", hint: "drafts a post, parks for review" },
   { label: "New subscription", type: "subscription.requested", hint: "subscription-manager" },
   { label: "Send NPS survey", type: "survey.requested", hint: "survey → signal → thesis" },
