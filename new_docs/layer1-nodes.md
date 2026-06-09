@@ -487,6 +487,15 @@ walkthrough. Until then, it doesn't exist.
   (the UI's "Clear all") clears only the in-memory view — the file is kept.
   *(This is observability, not a queryable store; durable lead/pitch state stays
   the deferred Postgres slice.)*
+- **Node output (payloads):** trace rows carry **full payloads** —
+  `trigger_payload` (what the node received) and `emitted: [{type, event_id,
+  payload}]` (what it produced) — in the file and the `/api/traces` JSON (and the
+  `/topology` timeline renders them as a collapsible "output" block per step).
+  The **stdout** console log truncates long payload strings (default 200 chars,
+  via `FLYWHEEL_TRACE_LOG_TRUNCATE`) to stay readable; the file stays full.
+  > **Sensitivity:** in the LIVE venture these payloads contain real company
+  > data, contact emails, and generated pitch text written to `traces.jsonl`.
+  > The file is gitignored, but treat it as sensitive locally.
 - **Verifying live lead-gen on the UI:** the dev server picks its venture from
   the `FLYWHEEL_VENTURE` env var (default `postlineai`, fully offline/fake). Run
 
