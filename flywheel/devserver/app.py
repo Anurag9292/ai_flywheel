@@ -11,7 +11,8 @@ Endpoints:
 - ``POST /api/publish``  — publish an event onto the live bus and run it through
   the real nodes; returns the resulting trace chain. **This is how the frontend
   triggers a real run** (no seeding).
-- ``POST /api/reset``    — clear the in-memory traces.
+- ``POST /api/reset``    — clear the in-memory traces (the durable
+  ``traces.jsonl`` log is kept).
 
 Run it:
 
@@ -25,6 +26,8 @@ deferred per ``new_docs/stack.md``. See ``new_docs/visualization.md``.
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
@@ -61,9 +64,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Where to persist run traces. Every node invocation appends one JSON line
+# (node, latency, cost, correlation_id, emitted events, error) so runs survive a
+# restart and are greppable. Repo-root traces.jsonl by default; override with
+# FLYWHEEL_TRACE_LOG (e.g. in .env). Gitignored.
+_TRACE_LOG = Path(os.environ.get("FLYWHEEL_TRACE_LOG", "traces.jsonl"))
+
 # One long-lived runtime for the process. Its bus + nodes persist across
-# requests, and traces are held in memory so /api/traces reads live state.
-_runtime, _bus, _recorder = build_runtime(keep_in_memory=True)
+# requests; traces are held in memory (so /api/traces reads live state) *and*
+# appended to _TRACE_LOG for a durable record.
+_runtime, _bus, _recorder = build_runtime(trace_log=_TRACE_LOG, keep_in_memory=True)
 # The venture definition that produced this runtime (Layer 2 composition).
 _venture = load_default_venture()
 # The human-review-queue holds parked items needing founder approval (Step 5).
@@ -189,7 +199,11 @@ def publish(req: PublishRequest) -> dict[str, Any]:
 
 @app.post("/api/reset")
 def reset() -> dict[str, Any]:
-    """Clear the in-memory traces so the UI can start clean."""
+    """Clear the in-memory traces so the UI can start clean.
+
+    This only clears the live in-memory view; the durable ``traces.jsonl`` log
+    is intentionally left intact (it's the run record, not a UI buffer).
+    """
     _recorder.clear()
     return {"status": "cleared", "count": 0}
 
