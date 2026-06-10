@@ -1,0 +1,29 @@
+# Curated lead-gen roster — the companies the live MultiATSJobBoardClient scans.
+#
+# Public ATS job-board APIs are PER-COMPANY: you must know each company's board
+# token (the slug in its hosted job-board URL). These endpoints are free and
+# unauthenticated:
+#   greenhouse: https://boards-api.greenhouse.io/v1/boards/{token}/jobs?content=true
+#   lever:      https://api.lever.co/v0/postings/{token}?mode=json
+#   ashby:      https://api.ashbyhq.com/posting-api/job-board/{token}
+#
+# Find a token from a company's job listing URL:
+#   boards.greenhouse.io/{token}/...   jobs.lever.co/{token}/...   jobs.ashbyhq.com/{token}/...
+#
+# This is the doctrine-friendly minimum: a small, explicit, hand-curated list.
+# ATS auto-detection (guessing tokens from company names) is a documented later
+# step. Add/remove rows freely — no code change needed.
+#
+# These are B2B SaaS / dev-tool companies hiring for content / brand / marketing
+# / devrel roles — PostlineAI's ICP (a live content req is a strong "they'd buy
+# ghostwriting" signal). Every token below was verified live against the public
+# API at authoring time; boards change, so re-verify if a company stops showing
+# up (a dead token just yields no postings — it never crashes the run).
+
+companies:
+  - { ats: lever,      token: mindtickle, name: Mindtickle }   # revenue-enablement SaaS; marketing reqs
+  - { ats: lever,      token: nium,       name: Nium }          # fintech infra; content strategist reqs
+  - { ats: lever,      token: scaleway,   name: Scaleway }      # cloud/AI; content editor reqs
+  - { ats: greenhouse, token: webflow,    name: Webflow }       # web platform; marketing/GTM reqs
+  - { ats: ashby,      token: posthog,    name: PostHog }       # dev analytics; developer-marketer reqs
+  - { ats: ashby,      token: vercel,     name: Vercel }        # dev platform; devrel/marketing reqs

@@ -1,0 +1,104 @@
+# PostlineAI (LIVE) — the lead-generation function runs against REAL backends
+# (all-or-nothing, "if live, always real"):
+#   - lead-sourcer        -> real public ATS discovery + real Firecrawl enrichment
+#   - company-needs-analyzer / pitch-generator -> real LLM reasoning (litellm)
+#
+# Load it explicitly for a real /topology run:
+#   FLYWHEEL_VENTURE=postlineai-live uvicorn flywheel.devserver.app:app --reload
+#
+# REQUIRED env (the server fails loud at startup if missing):
+#   OPENAI_API_KEY      — real LLM reasoning (override model: FLYWHEEL_LLM_MODEL).
+#   FIRECRAWL_API_KEY   — career-page enrichment.
+#
+# Everything OUTSIDE the lead-generation function is identical to postlineai.yaml
+# and still uses canned/deterministic variants. The default venture
+# (postlineai.yaml) stays fully fake/offline and needs no keys, so the everyday
+# demo and the test suite remain fast and deterministic.
+
+name: postlineai
+description: >-
+  B2B LinkedIn ghostwriting for founders/execs. Turns 10 minutes of voice notes
+  a week into a consistent, on-brand LinkedIn presence. (LIVE lead-gen variant:
+  real public ATS discovery.)
+
+domain:
+  icp: "seed/Series-A B2B SaaS founders, 50-500 employees"
+  riskiest_assumption: "founders will pay $499/mo for ghostwritten posts"
+  price_hypothesis_usd: 499
+
+functions:
+  - name: thesis
+    description: Track the venture thesis as evidence arrives, and alert the founder.
+    nodes:
+      - name: thesis-tracker
+      - name: founder-notifier
+
+  - name: market-exploration
+    description: Desk research + the ad-test demand loop (validate before building).
+    nodes:
+      - name: market-scanner
+      - name: ad-campaign-runner
+      - name: ad-analytics-collector
+      - name: signal-analyzer        # shared with customer-success
+
+  - name: discovery
+    description: Customer conversations -> extracted pain.
+    nodes:
+      - name: pain-extractor
+
+  - name: gtm
+    description: The Wizard-of-Oz product flow — capture input, draft, review, publish.
+    nodes:
+      - name: input-intake
+      - name: post-drafter
+        config:
+          impl: human               # Step-7 swaps this to agent-v1 (one line)
+      - name: human-review-queue
+      - name: post-scheduler
+
+  - name: billing
+    description: Subscriptions and payments.
+    nodes:
+      - name: subscription-manager
+
+  - name: customer-success
+    description: Measure engagement + satisfaction; feed signals back to the thesis.
+    nodes:
+      - name: post-analytics-collector
+      - name: customer-survey
+      - name: signal-analyzer        # shared with market-exploration
+
+  - name: lead-generation
+    description: >-
+      Outbound customer acquisition. Scrape job portals / career pages for
+      companies hiring for content / brand / founder-comms roles (a strong
+      "they need ghostwriting now" signal), infer each company's top need,
+      draft tailored email + LinkedIn pitches, and route them through the
+      existing human-review queue for founder approval before send.
+    nodes:
+      - name: lead-sourcer
+        config:
+          live: true                # REAL public ATS discovery + REAL Firecrawl
+      - name: company-needs-analyzer
+        config:
+          live: true                # REAL LLM reasoning (litellm; needs OPENAI_API_KEY)
+      - name: pitch-generator
+        config:
+          live: true                # REAL LLM pitch drafting (needs OPENAI_API_KEY)
+      - name: human-review-queue     # reused (also in gtm)
+      - name: founder-notifier       # reused (also in thesis)
+
+  - name: data-ingestion
+    description: >-
+      Maintain an enrichable catalog of public API sources, scrape them with
+      resumable per-source cursors into durable storage, and incrementally
+      build a knowledge graph + materialized views from new records. The
+      scraper infers each source's schema at runtime (no per-provider code).
+      Same node set as the default venture; flip source-scraper config to
+      `canned: false` for real httpx + LLM inference.
+    nodes:
+      - name: source-registry
+      - name: source-scraper
+        config:
+          canned: true              # set false to use real httpx + LLM inference
+      - name: knowledge-builder

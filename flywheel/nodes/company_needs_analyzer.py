@@ -129,7 +129,10 @@ class CompanyNeedsAnalyzer:
             if not company.contact_email:
                 company.contact_email = emails_by_company.get(company.company, "")
 
+        # Forward the offer so the (downstream) pitch-generator prompt keeps it.
+        payload = report.model_dump()
+        payload["offer"] = offer
         ctx.emit(
             type="company.needs.profiled",
-            payload=report.model_dump(),
+            payload=payload,
         )

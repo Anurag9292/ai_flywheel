@@ -97,9 +97,11 @@ A Layer 1 node typically calls one or more of these inside its handler.
 | 12 | `inbound-collector` | Webhook + email-to-bucket | `input-intake` | Step 5 |
 | 13 | `linkedin-posting-client` | LinkedIn content posting API (separate from ads) | `post-scheduler`, `post-analytics-collector` | Step 5 |
 | 14 | `billing-client` | Stripe | `subscription-manager` | Step 5 |
-| 15 | `job-board-client` | Job aggregator (Indeed / LinkedIn Jobs / Greenhouse / Lever) | `lead-sourcer` | Lead-gen step |
-| 16 | `web-scraper-client` | Managed page-scrape/extract (Firecrawl / ScrapingBee). Distinct from `web-search-client`: this *reads* a URL, that one *finds* URLs. | `lead-sourcer` | Lead-gen step |
-| 17 | `api-fetch-client` | Generic, auth-aware, content-type-negotiating HTTP GET (httpx). Source-agnostic: returns parsed body + headers; does **not** know any provider. | `source-scraper` | Ingestion step |
+| 15 | `job-board-client` | **Real impl built (free):** public, unauthenticated Greenhouse / Lever / Ashby job-board JSON APIs via `MultiATSJobBoardClient` over a curated roster (`ventures/lead_sources.yaml`); dedup via `LeadStore`. Fake remains the default. | `lead-sourcer` | Lead-gen step |
+| 16 | `web-scraper-client` | **In-house default:** `HttpxScraperClient` (plain httpx → text + `<a href>` links + emails; no browser). `FirecrawlScraperClient` is the managed fallback for JS-heavy/anti-bot pages (used when `FIRECRAWL_API_KEY` is set). The swappable executor leaf under `crawl-agent`. See `new_docs/scraping-engine.md`. | `crawl-agent` | Lead-gen step |
+| 17 | `crawl-agent` *(composite capability — `flywheel/agents/`)* | **Goal-agnostic** best-first focused crawler: owns the mechanism (frontier, budgets, dedupe, same-domain) and takes a pluggable `CrawlGoal` for the intent. Reusable for any use case — `ContactCrawlGoal` (lead-gen), `KeywordCrawlGoal` (market research), RAG ingestion, diligence… Calls `web-scraper-client`. Not substrate. See `new_docs/scraping-engine.md`. | `lead-sourcer` (and any future crawl use case) | Lead-gen step |
+| 18 | `lead-store` | Dedup/cache seam (`InMemoryLeadStore` now; Postgres next). Keeps a live ATS scan from re-surfacing the same posting. | `MultiATSJobBoardClient` | Lead-gen (real) |
+| 19 | `api-fetch-client` | Generic, auth-aware, content-type-negotiating HTTP GET (httpx). Source-agnostic: returns parsed body + headers; does **not** know any provider. | `source-scraper` | Ingestion step |
 
 > Add a library here only when a node already exists (or is being derived) that
 > needs to call it. Don't pre-create wrappers "in case."
@@ -523,11 +525,28 @@ walkthrough. Until then, it doesn't exist.
     pitch.approved`) and `founder-notifier` with **zero node-code changes**.
     Closes the loop `lead-search.requested → companies.discovered →
     company.needs.profiled → pitch.drafted (parked) → pitch.approved`.
-  - **Deferred within lead-gen (documented):** real job-board/scraping APIs
-    (today: fakes); durable lead/company state (Postgres trigger); scheduled
-    re-scraping (`tick.daily`, Temporal trigger); rate-limiting / proxies; and
-    a future `outreach-sender` node + `outreach-client` library (today the
-    chain stops at human-approved pitch).
+  - **Lead-gen discovery is now REAL and FREE:** `job-board-client` has a real
+    `MultiATSJobBoardClient` over the public, unauthenticated Greenhouse / Lever
+    / Ashby job-board JSON APIs (no key, no cost), scanning a curated roster
+    (`ventures/lead_sources.yaml`), normalizing each ATS to `JobPosting`,
+    filtering by criteria, and deduplicating via a `LeadStore`
+    (`InMemoryLeadStore` now). `web-scraper-client` has a real
+    `FirecrawlScraperClient` for career-page enrichment, wired **opt-in**: it
+    activates only when `FIRECRAWL_API_KEY` is set *and* a posting lacks an
+    email, else it falls back to the offline fake. Real I/O uses `httpx` +
+    `tenacity` (the optional `lead-gen` extra), imported lazily — so the default
+    (fake) path, tests, CI and `/topology` stay offline and deterministic. The
+    `lead-sourcer` node, events, and venture topology are **unchanged**; live
+    mode is a one-line venture config (`config: {live: true}`) selected in the
+    registry.
+  - **Deferred within lead-gen (documented):** durable lead/company + "already
+    pitched" state → **Postgres/Neon** behind the `LeadStore` Protocol (the
+    immediate next slice — first real durable-state need); scheduled re-scraping
+    (`tick.daily`) + durable retries at volume → **Temporal**; ATS
+    auto-detection (grow the roster from company names); **Crawl4AI** as a
+    self-hosted scraper only if Firecrawl cost/volume ever justifies owning the
+    browser stack; and a future `outreach-sender` node + `outreach-client`
+    library (today the chain stops at human-approved pitch).
   - **Public-data ingestion cluster (durable persistence arrives):** the first
     real, durable, resumable storage in the system. Adds the `api-fetch-client`
     library (real httpx + auth + content-type negotiation; fake for offline),
@@ -564,3 +583,48 @@ walkthrough. Until then, it doesn't exist.
   runtime (`flywheel/devserver/topology.py`) and triggerable from `/topology`;
   the human-review queue is visible/approvable via `/api/review` and the
   `/topology` review panel.
+- **Run history (durable):** the dev API also **appends every trace row to
+  `traces.jsonl`** (repo root; override with `FLYWHEEL_TRACE_LOG`; gitignored),
+  so runs survive a restart and are greppable — `grep <correlation_id>
+  traces.jsonl` shows a run's steps + per-call latency/cost. The in-memory
+  `/api/traces` view powers the live UI; the file is the record. `/api/reset`
+  (the UI's "Clear all") clears only the in-memory view — the file is kept.
+  *(This is observability, not a queryable store; durable lead/pitch state stays
+  the deferred Postgres slice.)*
+- **Node output (payloads):** trace rows carry **full payloads** —
+  `trigger_payload` (what the node received) and `emitted: [{type, event_id,
+  payload}]` (what it produced) — in the file and the `/api/traces` JSON (and the
+  `/topology` timeline renders them as a collapsible "output" block per step).
+  The **stdout** console log truncates long payload strings (default 200 chars,
+  via `FLYWHEEL_TRACE_LOG_TRUNCATE`) to stay readable; the file stays full.
+  > **Sensitivity:** in the LIVE venture these payloads contain real company
+  > data, contact emails, and generated pitch text written to `traces.jsonl`.
+  > The file is gitignored, but treat it as sensitive locally.
+- **Verifying live lead-gen on the UI:** the dev server picks its venture from
+  the `FLYWHEEL_VENTURE` env var (default `postlineai`, fully offline/fake). Run
+
+  ```
+  FLYWHEEL_VENTURE=postlineai-live \
+  OPENAI_API_KEY=sk-... FIRECRAWL_API_KEY=fc-... \
+  uvicorn flywheel.devserver.app:app --reload
+  ```
+
+  to load `ventures/postlineai-live.yaml`. Its `lead-generation` function runs
+  **all-or-nothing live** ("if live, always real"):
+
+  - `lead-sourcer` → real public-ATS discovery (free) **+** real Firecrawl
+    enrichment (needs `FIRECRAWL_API_KEY`).
+  - `company-needs-analyzer` / `pitch-generator` → real LLM via `LiteLLMGateway`
+    (needs `OPENAI_API_KEY`; model via `FLYWHEEL_LLM_MODEL`, default
+    `gpt-4o-mini`).
+
+  So the parked **pitches now reflect the real discovered companies**, not the
+  canned demo set. The `/topology` header shows a **LIVE / FAKE** badge (from
+  `mode` on `GET /api/venture`); real cost/latency appear in the traces.
+
+  > **Fail-loud:** the live venture **requires both keys** — the server raises a
+  > clear error at startup if either is missing (no silent fake fallback). The
+  > default `postlineai` venture stays fully offline/free and needs no keys. A
+  > live run spends real tokens (~2 calls + 1/company) + Firecrawl credits and
+  > takes ~10s+, so the frontend may show a "didn't respond" notice — click
+  > **Refresh** to see the completed run.

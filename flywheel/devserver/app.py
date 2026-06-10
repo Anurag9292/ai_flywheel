@@ -11,7 +11,8 @@ Endpoints:
 - ``POST /api/publish``  — publish an event onto the live bus and run it through
   the real nodes; returns the resulting trace chain. **This is how the frontend
   triggers a real run** (no seeding).
-- ``POST /api/reset``    — clear the in-memory traces.
+- ``POST /api/reset``    — clear the in-memory traces (the durable
+  ``traces.jsonl`` log is kept).
 
 Run it:
 
@@ -25,20 +26,31 @@ deferred per ``new_docs/stack.md``. See ``new_docs/visualization.md``.
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from flywheel.core.events import Event
-from flywheel.devserver.topology import (
+from flywheel.env import load_dotenv_if_present
+
+# Load a gitignored repo-root .env BEFORE the runtime is built, so FLYWHEEL_VENTURE
+# / OPENAI_API_KEY / FIRECRAWL_API_KEY are in the environment when the registry
+# reads them. Shell + debugger env still win (override=False). No-op without
+# python-dotenv or a .env file.
+load_dotenv_if_present()
+
+from flywheel.core.events import Event  # noqa: E402  (after dotenv load)
+from flywheel.devserver.topology import (  # noqa: E402
     build_runtime,
     find_review_queue,
     load_default_venture,
+    runtime_mode,
 )
-from flywheel.venture.registry import ingestion_stores
-from flywheel.venture.view import function_view, lint_venture
+from flywheel.venture.registry import ingestion_stores  # noqa: E402
+from flywheel.venture.view import function_view, lint_venture  # noqa: E402
 
 app = FastAPI(
     title="AI Flywheel — Dev Introspection",
@@ -53,9 +65,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Where to persist run traces. Every node invocation appends one JSON line
+# (node, latency, cost, correlation_id, emitted events, error) so runs survive a
+# restart and are greppable. Repo-root traces.jsonl by default; override with
+# FLYWHEEL_TRACE_LOG (e.g. in .env). Gitignored.
+_TRACE_LOG = Path(os.environ.get("FLYWHEEL_TRACE_LOG", "traces.jsonl"))
+
 # One long-lived runtime for the process. Its bus + nodes persist across
-# requests, and traces are held in memory so /api/traces reads live state.
-_runtime, _bus, _recorder = build_runtime(keep_in_memory=True)
+# requests; traces are held in memory (so /api/traces reads live state) *and*
+# appended to _TRACE_LOG for a durable record.
+_runtime, _bus, _recorder = build_runtime(trace_log=_TRACE_LOG, keep_in_memory=True)
 # Capture the ingestion store bundle wired into *this* runtime's nodes at build
 # time (the global can be reset by later build_runtime calls in the same
 # process, e.g. tests — so bind it now to stay consistent with our nodes).
@@ -90,6 +109,9 @@ def venture() -> dict[str, Any]:
         "name": _venture.name,
         "description": _venture.description,
         "domain": _venture.domain,
+        # "live" if lead-gen discovery hits real public ATS APIs, else "fake".
+        # The /topology UI renders this as a LIVE/FAKE badge.
+        "mode": runtime_mode(_venture),
         "functions": function_view(_venture, describe),
         "lint": lint_venture(_venture, describe),
     }
@@ -182,7 +204,11 @@ def publish(req: PublishRequest) -> dict[str, Any]:
 
 @app.post("/api/reset")
 def reset() -> dict[str, Any]:
-    """Clear the in-memory traces so the UI can start clean."""
+    """Clear the in-memory traces so the UI can start clean.
+
+    This only clears the live in-memory view; the durable ``traces.jsonl`` log
+    is intentionally left intact (it's the run record, not a UI buffer).
+    """
     _recorder.clear()
     return {"status": "cleared", "count": 0}
 

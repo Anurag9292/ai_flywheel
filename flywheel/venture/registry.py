@@ -13,19 +13,29 @@ behavior exactly. Pass ``config: {canned: false}`` to get a plain node instead.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from typing import Any
 
+from flywheel.agents.crawl_agent import CrawlAgent
 from flywheel.core.inferencer import FakeInferencer, LLMInferencer
 from flywheel.core.node import Node
 from flywheel.libraries.api_fetch_client import FakeApiFetchClient, HttpxApiFetchClient
 from flywheel.libraries.job_board_client import (
     FakeJobBoardClient,
     JobSearchCriteria,
+    MultiATSJobBoardClient,
+    load_roster,
 )
-from flywheel.libraries.llm_gateway import FakeLLMGateway
+from flywheel.libraries.lead_store import InMemoryLeadStore
+from flywheel.libraries.llm_gateway import FakeLLMGateway, LiteLLMGateway
 from flywheel.libraries.semrush_client import FakeSemrushClient, KeywordVolume
-from flywheel.libraries.web_scraper_client import FakeWebScraperClient
+from flywheel.libraries.web_scraper_client import (
+    FakeWebScraperClient,
+    FirecrawlScraperClient,
+    HttpxScraperClient,
+    WebScraperClient,
+)
 from flywheel.libraries.web_search_client import FakeWebSearchClient, SearchResult
 from flywheel.nodes.ad_analytics_collector import AdAnalyticsCollector
 from flywheel.nodes.ad_campaign_runner import AdCampaignRunner
@@ -144,7 +154,24 @@ def _post_drafter(config: dict[str, Any]) -> Node:
     raise ValueError(f"post-drafter impl {impl!r} not implemented yet (Step 7).")
 
 
-# ── Outbound lead-gen (canned demo nodes) ─────────────────────────────────────
+# ── Outbound lead-gen ─────────────────────────────────────────────────────────
+
+
+def _require_env(var: str, node: str, purpose: str) -> str:
+    """Return env var ``var`` or raise a clear error naming the node + fix.
+
+    Used by the LIVE venture: live nodes call real backends and **fail loud** on
+    a missing key rather than silently falling back to fakes (the chosen
+    "if live, always real" semantics). The default offline venture never hits
+    this — it builds the canned/fake variants.
+    """
+    value = os.environ.get(var)
+    if not value:
+        raise RuntimeError(
+            f"Live node {node!r} needs {var} ({purpose}). Set it, or run the "
+            f"default offline venture (FLYWHEEL_VENTURE=postlineai)."
+        )
+    return value
 
 
 def _lead_sourcer(config: dict[str, Any]) -> Node:
@@ -160,14 +187,49 @@ def _lead_sourcer(config: dict[str, Any]) -> Node:
         departments=["Marketing"],
         limit=10,
     )
+    # ICP + offer seed the company-needs prompt downstream (carried in the
+    # companies.discovered payload). From the venture domain in a fuller wiring;
+    # sensible PostlineAI defaults here.
+    icp = config.get("icp", "seed/Series-A B2B SaaS founders, 50-500 employees")
+    offer = config.get("offer", "$499/mo done-for-you LinkedIn ghostwriting for founders")
+
+    # ── Live mode: real discovery via public ATS APIs + agentic site crawl ───
+    # `config: {live: true}` scans the curated roster (ventures/lead_sources.yaml)
+    # over the public Greenhouse/Lever/Ashby JSON APIs (free, no key). Enrichment
+    # now *navigates the company's own site* via a best-first CrawlAgent (see
+    # new_docs/scraping-engine.md). The executor is the in-house HttpxScraperClient
+    # by default (no browser, no key) — or Firecrawl when FIRECRAWL_API_KEY is set
+    # (for JS-heavy / anti-bot pages). The default (canned/offline) path is
+    # unchanged, so tests + /topology stay deterministic.
+    if config.get("live", False):
+        scraper: WebScraperClient
+        if os.environ.get("FIRECRAWL_API_KEY"):
+            scraper = FirecrawlScraperClient.from_env() or HttpxScraperClient()
+        else:
+            scraper = HttpxScraperClient()
+        return LeadSourcer(
+            job_board=MultiATSJobBoardClient(load_roster(), store=InMemoryLeadStore()),
+            crawler=CrawlAgent(scraper),
+            default_criteria=default_criteria,
+            icp=icp,
+            offer=offer,
+        )
+
     return LeadSourcer(
         job_board=FakeJobBoardClient(),
         scraper=FakeWebScraperClient(),
         default_criteria=default_criteria,
+        icp=icp,
+        offer=offer,
     )
 
 
 def _company_needs_analyzer(config: dict[str, Any]) -> Node:
+    if config.get("live", False):
+        # Real reasoning over the real discovered companies. Requires a provider
+        # key (OPENAI_API_KEY); fail loud if absent.
+        _require_env("OPENAI_API_KEY", "company-needs-analyzer", "live reasoning")
+        return CompanyNeedsAnalyzer(gateway=LiteLLMGateway())
     if not config.get("canned", True):
         return CompanyNeedsAnalyzer()
     gateway = FakeLLMGateway()
@@ -222,6 +284,10 @@ def _company_needs_analyzer(config: dict[str, Any]) -> Node:
 
 
 def _pitch_generator(config: dict[str, Any]) -> Node:
+    if config.get("live", False):
+        # Real, tailored pitches for the real companies. Requires OPENAI_API_KEY.
+        _require_env("OPENAI_API_KEY", "pitch-generator", "live pitch drafting")
+        return PitchGenerator(gateway=LiteLLMGateway())
     if not config.get("canned", True):
         return PitchGenerator()
     gateway = FakeLLMGateway()

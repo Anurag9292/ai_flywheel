@@ -116,3 +116,81 @@ def test_lead_sourcer_preserves_correlation_id(tmp_path) -> None:
     trigger = Event(type="lead-search.requested", venture_id="v", payload={})
     bus.publish(trigger)
     assert out[0].correlation_id == trigger.correlation_id
+
+
+def test_lead_sourcer_surfaces_fetch_errors_in_event(tmp_path) -> None:
+    # A job board that records last_errors (like the live MultiATSJobBoardClient)
+    # has those errors surfaced in the emitted companies.discovered payload, so a
+    # live run that found nothing explains *why* in the trace.
+    from flywheel.libraries.job_board_client import FetchError
+
+    class _FailingBoard:
+        def __init__(self) -> None:
+            self.last_errors: list[FetchError] = []
+
+        def search_postings(self, criteria: JobSearchCriteria) -> list[JobPosting]:
+            self.last_errors = [
+                FetchError(
+                    ats="lever",
+                    token="globex",
+                    url="https://api.lever.co/v0/postings/globex?mode=json",
+                    error="ConnectError: network unreachable",
+                )
+            ]
+            return []
+
+    sourcer = LeadSourcer(job_board=_FailingBoard())
+    bus, _ = _runtime(tmp_path, sourcer)
+    out: list[Event] = []
+    bus.subscribe("companies.discovered", out.append)
+
+    bus.publish(Event(type="lead-search.requested", venture_id="v", payload={}))
+    payload = CompaniesDiscovered.model_validate(out[0].payload)
+    assert payload.companies == []
+    assert len(payload.fetch_errors) == 1
+    assert payload.fetch_errors[0]["ats"] == "lever"
+    assert "ConnectError" in payload.fetch_errors[0]["error"]
+
+
+def test_lead_sourcer_no_fetch_errors_for_fake_board(tmp_path) -> None:
+    # The fake board has no last_errors → fetch_errors stays empty.
+    sourcer = LeadSourcer()
+    bus, _ = _runtime(tmp_path, sourcer)
+    out: list[Event] = []
+    bus.subscribe("companies.discovered", out.append)
+    bus.publish(Event(type="lead-search.requested", venture_id="v", payload={}))
+    payload = CompaniesDiscovered.model_validate(out[0].payload)
+    assert payload.fetch_errors == []
+
+
+def test_lead_sourcer_enrichment_failure_is_non_fatal(tmp_path) -> None:
+    # A scraper that raises (e.g. a bad Firecrawl key) must NOT crash the run —
+    # the run still emits companies.discovered with the ATS postings.
+    fixtures = [
+        JobPosting(
+            company="Acme",
+            title="Head of Content",
+            url="https://acme.example.com/careers/1",
+            contact_email="",  # forces enrichment
+        )
+    ]
+
+    class _BoomScraper:
+        def scrape(self, url: str):  # noqa: ANN001, ANN201
+            raise RuntimeError("Unauthorized: Invalid token")
+
+    sourcer = LeadSourcer(
+        job_board=FakeJobBoardClient(fixtures=fixtures),
+        scraper=_BoomScraper(),
+    )
+    bus, _ = _runtime(tmp_path, sourcer)
+    out: list[Event] = []
+    bus.subscribe("companies.discovered", out.append)
+
+    bus.publish(Event(type="lead-search.requested", venture_id="v", payload={}))
+
+    # The run survived the scraper blowing up.
+    assert len(out) == 1
+    payload = CompaniesDiscovered.model_validate(out[0].payload)
+    assert payload.companies[0].company == "Acme"
+    assert payload.companies[0].contact_email == ""  # enrichment skipped

@@ -45,6 +45,12 @@ export interface Topology {
 
 // ─── Traces (View 2) ─────────────────────────────────────────────────────────
 
+export interface EmittedEvent {
+  type: string;
+  event_id: string;
+  payload: Record<string, unknown>;
+}
+
 export interface TraceRow {
   captured_at: string;
   node: string;
@@ -58,6 +64,10 @@ export interface TraceRow {
   latency_ms: number;
   cost_usd: number;
   error: string | null;
+  // Full payloads (what the node received + produced). Optional so an older
+  // backend without them still renders.
+  trigger_payload?: Record<string, unknown>;
+  emitted?: EmittedEvent[];
   // Added by the API's chain builder:
   seq: number;
   parent_step: number | null;
@@ -205,6 +215,9 @@ export interface VentureResponse {
   name: string;
   description: string;
   domain: Record<string, unknown>;
+  // "live" = lead-gen discovery hits real public ATS APIs; "fake" = canned.
+  // Optional so an older backend without the field renders as fake.
+  mode?: "live" | "fake";
   functions: VentureFunction[];
   lint: VentureLint;
 }

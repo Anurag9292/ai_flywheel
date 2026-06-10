@@ -38,8 +38,10 @@ These are sound and have day-one value — no reason to defer:
 | **Python 3.12+** | Backend language | AI/ML ecosystem is Python-first. |
 | **Pydantic** | Event model + library protocols | The `Event` contract and tool interfaces want exactly this. |
 | **structlog** | The `trace-recorder` substrate | Substrate *is* structured logging that also emits `trace.captured`. |
-| **litellm** | `llm-gateway` real impl | Already the seam we designed for agentic nodes. |
-| **httpx, tenacity** | Real library clients | LinkedIn / Slack / analytics clients need these. |
+| **litellm** | `llm-gateway` real impl | **Now built:** `LiteLLMGateway` (in the `lead-gen` extra). Live lead-gen nodes use it; requires a provider key (e.g. `OPENAI_API_KEY`). Real cost/latency now flow into traces. |
+| **httpx, tenacity** | Real library clients | **Promoted to core deps** (no longer in an extra) so the real `job-board-client` (free public ATS APIs) never fails on a missing dep. The heavier `litellm` / `firecrawl-py` stay opt-in in `lead-gen`. |
+| **Public ATS APIs** | `job-board-client` real impl (lead-gen discovery) | Free, unauthenticated Greenhouse / Lever / Ashby job-board JSON. The first *real* external I/O — no key, no cost. |
+| **Firecrawl** | `web-scraper-client` real impl (career-page enrichment) | **Opt-in** (only if `FIRECRAWL_API_KEY` set). Free tier covers a curated roster; the only potentially-paid lead-gen piece. Crawl4AI is the self-host fallback if cost/volume ever justify it. |
 | **ruff, mypy, pytest** | Tooling | Nothing to defer. |
 | **Next.js + TypeScript** | Frontend | Already live (`frontend/`, `/vision` + `/vision-v2`). |
 
@@ -54,7 +56,7 @@ paying for.
 | Capability | Thin first impl (now) | Target (old docs) | Defer until |
 |---|---|---|---|
 | **Event bus** | `InMemoryEventBus` (sync, in-process) | Redis Streams → Kafka (Upstash) | Multiple processes/workers, or events must survive a restart. |
-| **Persistence** | in-memory + JSONL trace log | Postgres (Neon) + SQLAlchemy + Alembic | A node needs durable venture state (thesis state, subscriptions) — PostlineAI **Step 5**. |
+| **Persistence** | in-memory + JSONL trace log; `InMemoryLeadStore` for lead dedup | Postgres (Neon) + SQLAlchemy + Alembic | A node needs durable venture state (thesis state, subscriptions) — PostlineAI **Step 5** — or durable lead dedup / "already pitched" memory behind the `LeadStore` Protocol (**immediate next lead-gen slice**). |
 | **Vector store** | — (none) | pgvector (+ optional Qdrant) | Embeddings appear — PostlineAI **Step 7** (`voice-profile-builder`) or RAG. |
 | **Workflow engine** | synchronous bus dispatch | Temporal.io (Cloud) | A flow must pause for hours/days, resume after crash, or wait on a human — PostlineAI **Step 5** (Wizard-of-Oz waits) or **Step 7** (review hold). |
 | **Object storage** | — (none) | Cloudflare R2 / MinIO | Artifacts/datasets need storing — later (no Step 1–4 need). |
