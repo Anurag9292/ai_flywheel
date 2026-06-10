@@ -50,6 +50,30 @@ consumable by Layer 3.
 The pub/sub mechanism every node uses. Listed here too because **it is the
 single dependency that everything else in Layer 1 has.**
 
+### `timer-source`
+
+Publishes `tick.daily` / `tick.minute` events onto the bus so timer-driven nodes
+re-run on a cadence. Like `trace-recorder`, it is substrate, not a node you wire:
+it just emits a timer event and any subscriber reacts through the normal Runtime
+path (and is traced automatically). Thin first impl calls `tick()` manually (dev
+API / script / test); a real scheduler (cron / Temporal cron) drives it in prod
+behind the same surface.
+
+- **Derived in:** Public-data ingestion step (closed the long-deferred
+  `tick.daily` trigger).
+
+### Persistence stores (`source-store`, `raw-record-store`, `knowledge-store`)
+
+The first **durable** substrate. Each is a Protocol with an in-memory fake
+(zero-infra, the test/demo default) and a real sync-SQLAlchemy impl against Neon
+Postgres (any Postgres; swappable via `DB_URL`). They hold, respectively: the
+source catalog + per-source resume cursor; the append-only idempotent raw
+records with a monotonic watermark; and the knowledge graph (entities/edges) +
+materialized views. Migrations via Alembic.
+
+- **Derived in:** Public-data ingestion step (the concrete trigger `stack.md`
+  names for Postgres/Neon).
+
 ---
 
 ## 2. Library tools (plain function calls — no events)
@@ -76,7 +100,8 @@ A Layer 1 node typically calls one or more of these inside its handler.
 | 15 | `job-board-client` | **Real impl built (free):** public, unauthenticated Greenhouse / Lever / Ashby job-board JSON APIs via `MultiATSJobBoardClient` over a curated roster (`ventures/lead_sources.yaml`); dedup via `LeadStore`. Fake remains the default. | `lead-sourcer` | Lead-gen step |
 | 16 | `web-scraper-client` | **In-house default:** `HttpxScraperClient` (plain httpx → text + `<a href>` links + emails; no browser). `FirecrawlScraperClient` is the managed fallback for JS-heavy/anti-bot pages (used when `FIRECRAWL_API_KEY` is set). The swappable executor leaf under `crawl-agent`. See `new_docs/scraping-engine.md`. | `crawl-agent` | Lead-gen step |
 | 17 | `crawl-agent` *(composite capability — `flywheel/agents/`)* | **Goal-agnostic** best-first focused crawler: owns the mechanism (frontier, budgets, dedupe, same-domain) and takes a pluggable `CrawlGoal` for the intent. Reusable for any use case — `ContactCrawlGoal` (lead-gen), `KeywordCrawlGoal` (market research), RAG ingestion, diligence… Calls `web-scraper-client`. Not substrate. See `new_docs/scraping-engine.md`. | `lead-sourcer` (and any future crawl use case) | Lead-gen step |
-| 17 | `lead-store` | Dedup/cache seam (`InMemoryLeadStore` now; Postgres next). Keeps a live ATS scan from re-surfacing the same posting. | `MultiATSJobBoardClient` | Lead-gen (real) |
+| 18 | `lead-store` | Dedup/cache seam (`InMemoryLeadStore` now; Postgres next). Keeps a live ATS scan from re-surfacing the same posting. | `MultiATSJobBoardClient` | Lead-gen (real) |
+| 19 | `api-fetch-client` | Generic, auth-aware, content-type-negotiating HTTP GET (httpx). Source-agnostic: returns parsed body + headers; does **not** know any provider. | `source-scraper` | Ingestion step |
 
 > Add a library here only when a node already exists (or is being derived) that
 > needs to call it. Don't pre-create wrappers "in case."
@@ -110,6 +135,9 @@ canonical entry per node.
 | 18 | `lead-sourcer` | dumb | Lead-gen step |
 | 19 | `company-needs-analyzer` | agentic | Lead-gen step |
 | 20 | `pitch-generator` | agentic | Lead-gen step |
+| 21 | `source-registry` | dumb | Ingestion step |
+| 22 | `source-scraper` | agentic | Ingestion step |
+| 23 | `knowledge-builder` | dumb (LLM-ready seam) | Ingestion step |
 
 ### Canonical entries
 
@@ -327,6 +355,51 @@ pitch is emitted tagged `requires_human=true` so it parks in the existing
 
 ---
 
+#### `source-registry`
+
+Maintains the enrichable catalog of opaque public-API sources. Stores a URL plus
+optional human hints (which override inference) and free-form enrichment; does
+not know what any source *is*. Announces the active set.
+
+- **Reacts to:** `source.register.requested`, `source.enrich.requested`.
+- **Calls:** `source-store`.
+- **Emits:** `sources.updated`.
+- **Kind:** dumb.
+
+#### `source-scraper`
+
+The agentic heart of ingestion. Handed an opaque source, it fetches it, infers
+*how to read it* (record location, id field, timestamp field, pagination) with
+an `Inferencer` (LLM) **once** — caching the plan and re-inferring only on shape
+drift — applies human-hint overrides, executes the plan (pagination + cursor),
+upserts records idempotently on `(source_id, external_id)`, and advances a
+per-source resume cursor so the next scheduled run starts where it left off.
+
+- **Reacts to:** `sources.updated`, `scrape.requested`, `tick.daily`.
+- **Calls:** `api-fetch-client`, `inferencer` (`llm-gateway`), `source-store`,
+  `raw-record-store`.
+- **Emits:** `source.records.ingested`; `source.inference.low_confidence`
+  (tagged `requires_human`) when unsure and no hints exist — parked by the
+  existing `human-review-queue` (reuse).
+- **Kind:** agentic (it reasons about an unknown source's schema with an LLM).
+- **Note:** the `Inferencer` is a seam mirroring `Agent`/`Drafter` —
+  `LLMInferencer` now, deterministic `FakeInferencer` (structural heuristic) for
+  offline tests/demo.
+
+#### `knowledge-builder`
+
+Reads **only newly-added** raw records since its own watermark and builds the
+easy-to-consume output: knowledge-graph entities (Company, Job, Department,
+Location) + typed edges (`posts`, `in_department`, `in_location`) and
+materialized views (`open_roles_by_company`, `job_catalog`). Generic over the
+inferred field structure (no provider-specific keys) via an `Extractor` seam.
+
+- **Reacts to:** `source.records.ingested`, `tick.daily`.
+- **Calls:** `raw-record-store` (read new), `knowledge-store` (write).
+- **Emits:** `knowledge.updated`.
+- **Kind:** dumb (`StructuralExtractor`); an `LLMExtractor` can swap in behind
+  the seam with no event-contract change — the prototypical dumb→agentic graduation.
+
 ## Event vocabulary (so far)
 
 The events that have appeared above, grouped by domain.
@@ -348,6 +421,10 @@ The events that have appeared above, grouped by domain.
   `feedback.captured`, `prompt.tuning_proposed`.
 - **Outbound lead-gen:** `lead-search.requested`, `companies.discovered`,
   `company.needs.profiled`, `pitch.drafted`, `pitch.approved`.
+- **Public-data ingestion:** `source.register.requested`,
+  `source.enrich.requested`, `sources.updated`, `scrape.requested`,
+  `source.records.ingested`, `source.inference.low_confidence`,
+  `knowledge.updated`.
 - **Timers (substrate):** `tick.minute`, `tick.daily`.
 - **Substrate:** `trace.captured`, `requires_human=true` *(meta-tag, not an
   event type)*.
@@ -470,6 +547,32 @@ walkthrough. Until then, it doesn't exist.
     self-hosted scraper only if Firecrawl cost/volume ever justifies owning the
     browser stack; and a future `outreach-sender` node + `outreach-client`
     library (today the chain stops at human-approved pitch).
+  - **Public-data ingestion cluster (durable persistence arrives):** the first
+    real, durable, resumable storage in the system. Adds the `api-fetch-client`
+    library (real httpx + auth + content-type negotiation; fake for offline),
+    the `Inferencer` seam (`LLMInferencer` + `FakeInferencer`/structural
+    heuristic), the `timer-source` substrate (`tick.daily`/`tick.minute`), and
+    three durable stores (`source-store`, `raw-record-store`, `knowledge-store`)
+    as Protocol + in-memory fake + **sync SQLAlchemy/Neon Postgres** impl with
+    Alembic migrations (swappable via `DB_URL`; tests/demo stay on fakes,
+    zero-infra). New nodes: `source-registry`, `source-scraper` (agentic — infers
+    each source's schema/ingest plan at runtime, caches it, re-infers on drift,
+    resumes from a per-source cursor, idempotent upserts), and
+    `knowledge-builder` (incremental KG + materialized views over only new
+    records). Composed as a new `data-ingestion` function in
+    `ventures/postlineai.yaml`; the six public ATS boards the founder pointed at
+    (Lever / Greenhouse / Ashby) are **seed sources**, not encoded adapters —
+    the scraper infers them generically. Dev API gains
+    `/api/ingestion/sources` and `/api/ingestion/knowledge`. **Reuses**
+    `human-review-queue` (low-confidence inference parks for a human) with zero
+    node-code change.
+  - **Deferred within ingestion (documented):** async/Redis transport (still
+    sync in-memory); offset/`link_header` pagination (seed sources are
+    snapshots; cursor-token paging is implemented); a real secret store for
+    `auth_ref` (today an injected resolver); RSS/HTML structured parsing (JSON
+    now, behind the same content-type seam); real Postgres `MATERIALIZED VIEW`s
+    (today refreshable rows, identical behavior to the fake); and an
+    `LLMExtractor` for the knowledge-builder (the `Extractor` seam is in place).
   - Everything from Step 7 onward remains a derived requirement, not yet built.
 - **Next slices:** Step 7 — swap `post-drafter`'s human impl for a real LLM
   agent (the `Drafter` seam is already in place) + `voice-profile-builder`,

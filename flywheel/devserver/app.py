@@ -49,6 +49,7 @@ from flywheel.devserver.topology import (  # noqa: E402
     load_default_venture,
     runtime_mode,
 )
+from flywheel.venture.registry import ingestion_stores  # noqa: E402
 from flywheel.venture.view import function_view, lint_venture  # noqa: E402
 
 app = FastAPI(
@@ -74,6 +75,10 @@ _TRACE_LOG = Path(os.environ.get("FLYWHEEL_TRACE_LOG", "traces.jsonl"))
 # requests; traces are held in memory (so /api/traces reads live state) *and*
 # appended to _TRACE_LOG for a durable record.
 _runtime, _bus, _recorder = build_runtime(trace_log=_TRACE_LOG, keep_in_memory=True)
+# Capture the ingestion store bundle wired into *this* runtime's nodes at build
+# time (the global can be reset by later build_runtime calls in the same
+# process, e.g. tests — so bind it now to stay consistent with our nodes).
+_ingestion = ingestion_stores()
 # The venture definition that produced this runtime (Layer 2 composition).
 _venture = load_default_venture()
 # The human-review-queue holds parked items needing founder approval (Step 5).
@@ -226,6 +231,56 @@ class ApproveRequest(BaseModel):
     draft: str | None = Field(
         default=None, description="Optional final text the founder ghostwrote."
     )
+
+
+@app.get("/api/ingestion/sources")
+def ingestion_sources() -> dict[str, Any]:
+    """The registered data sources with their inferred plan + resume cursor.
+
+    The read side of the public-data ingestion cluster: shows each source the
+    ``source-registry`` knows about, whether its schema has been inferred yet,
+    and where its scrape cursor is — i.e. "till what point we have gotten the
+    info".
+    """
+    sources = _ingestion.source.list_enabled("postlineai")
+    return {
+        "count": len(sources),
+        "sources": [
+            {
+                "id": s.id,
+                "url": s.url,
+                "enabled": s.enabled,
+                "tags": s.tags,
+                "enrichment": s.enrichment,
+                "schema_fingerprint": s.schema_fingerprint,
+                "ingest_plan": s.ingest_plan.model_dump() if s.ingest_plan else None,
+                "cursor": s.cursor,
+            }
+            for s in sources
+        ],
+    }
+
+
+@app.get("/api/ingestion/knowledge")
+def ingestion_knowledge(view: str = "open_roles_by_company") -> dict[str, Any]:
+    """The knowledge-builder output: a materialized view + graph counts.
+
+    ``view`` selects which materialized view to return (default:
+    ``open_roles_by_company``; also ``job_catalog``). Entity/edge counts give a
+    quick sense of the graph size built from ingested records.
+    """
+    store = _ingestion.knowledge
+    mv = store.get_view(view, "postlineai")
+    return {
+        "view": view,
+        "rows": mv.rows if mv else [],
+        "refreshed_at": mv.refreshed_at.isoformat() if mv else None,
+        "entity_counts": {
+            t: len(store.entities(type=t, venture_id="postlineai"))
+            for t in ("Company", "Job", "Department", "Location")
+        },
+        "edge_count": len(store.edges(venture_id="postlineai")),
+    }
 
 
 @app.post("/api/review/approve")

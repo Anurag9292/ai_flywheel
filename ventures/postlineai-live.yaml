@@ -87,3 +87,18 @@ functions:
           live: true                # REAL LLM pitch drafting (needs OPENAI_API_KEY)
       - name: human-review-queue     # reused (also in gtm)
       - name: founder-notifier       # reused (also in thesis)
+
+  - name: data-ingestion
+    description: >-
+      Maintain an enrichable catalog of public API sources, scrape them with
+      resumable per-source cursors into durable storage, and incrementally
+      build a knowledge graph + materialized views from new records. The
+      scraper infers each source's schema at runtime (no per-provider code).
+      Same node set as the default venture; flip source-scraper config to
+      `canned: false` for real httpx + LLM inference.
+    nodes:
+      - name: source-registry
+      - name: source-scraper
+        config:
+          canned: true              # set false to use real httpx + LLM inference
+      - name: knowledge-builder

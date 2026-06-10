@@ -75,3 +75,22 @@ functions:
       - name: pitch-generator
       - name: human-review-queue     # reused (also in gtm)
       - name: founder-notifier       # reused (also in thesis)
+
+  - name: data-ingestion
+    description: >-
+      Maintain an enrichable catalog of public API sources, scrape them
+      reliably with resumable per-source cursors into durable storage, and
+      incrementally build a knowledge graph + materialized views from only the
+      newly-added records. The scraper is agentic: it infers each source's
+      schema + ingest mechanism at runtime (no per-provider code), caches the
+      inferred plan, and re-infers only on shape drift. Human hints override
+      inference. Seed sources (registered at runtime, not encoded here) include
+      public ATS job boards (Lever: mindtickle/nium/scaleway; Greenhouse:
+      webflow; Ashby: posthog/vercel) — a strong "hiring for content" signal
+      that feeds lead-generation.
+    nodes:
+      - name: source-registry
+      - name: source-scraper
+        config:
+          canned: true              # set false to use real httpx + LLM inference
+      - name: knowledge-builder

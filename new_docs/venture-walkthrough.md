@@ -288,6 +288,72 @@ demand promise paying out within a single venture.
 
 ---
 
+## Step 4.6 — Ingest public data the founder can mine for leads
+
+The outbound step proved that "companies hiring for content" is a strong buying
+signal. But the founder doesn't want to hand-pick boards forever — they want a
+durable, self-maintaining pipeline that pulls public job-board data on a
+schedule, remembers what it has already seen, and turns it into something easy
+to query.
+
+> *The venture needs to: maintain a list of public API sources (humans can add
+> and enrich them), scrape each one reliably on a schedule — resuming from where
+> the last run stopped — store the records durably, and roll the new records up
+> into a knowledge graph + materialized views the rest of the venture can use.*
+
+This is the first capability that genuinely needs **durable state** (a cursor
+that survives restarts) and a **timer** — the concrete triggers `stack.md` names
+for Postgres and a scheduler. It also surfaces a new kind of agentic work:
+inferring how to read an *unknown* source.
+
+→ **Derives Layer 1 substrate:** `timer-source` — publishes `tick.daily` /
+`tick.minute` onto the bus so timer-driven nodes re-run on a cadence.
+
+→ **Derives Layer 1 substrate:** `source-store`, `raw-record-store`,
+`knowledge-store` — durable stores (Protocol + in-memory fake + sync
+SQLAlchemy/Neon). The raw store is idempotent on `(source_id, external_id)` with
+a monotonic watermark for incremental reads.
+
+→ **Derives Layer 1 library tool:** `api-fetch-client` — a generic, auth-aware,
+content-type-negotiating HTTP GET. Crucially *source-agnostic*: it returns the
+parsed body; it does **not** know Lever/Greenhouse/Ashby.
+
+→ **Derives Layer 1 node:** `source-registry` — reacts to
+`source.register.requested` / `source.enrich.requested`, persists opaque sources
+(URL + optional human hints + enrichment), emits `sources.updated`.
+
+→ **Derives Layer 1 node:** `source-scraper` (agentic) — reacts to
+`sources.updated` / `scrape.requested` / `tick.daily`. For each source it
+fetches a sample, **infers the ingest plan** (record location, id field,
+timestamp field, pagination) with an `Inferencer` (LLM) — *once*, caching it and
+re-inferring only on schema drift — applies human-hint overrides, executes the
+plan with a resumable cursor, idempotently stores records, and emits
+`source.records.ingested`. The agentic insight: *figuring out how to read an
+arbitrary source is itself LLM reasoning.* No per-provider code exists.
+
+→ **Derives Layer 1 node:** `knowledge-builder` — reacts to
+`source.records.ingested` / `tick.daily`, reads only the **new** raw rows since
+its watermark, and builds KG entities/edges + materialized views
+(`open_roles_by_company`, `job_catalog`). Generic over the inferred fields via an
+`Extractor` seam (deterministic now; LLM-swappable later).
+
+> *The venture needs to: keep a human in the loop when the scraper can't confidently
+> infer a source.*
+
+The `human-review-queue` already exists. We *reuse* it: a low-confidence
+inference emits `source.inference.low_confidence` tagged `requires_human`, which
+parks for a human to supply hints — no new review machinery.
+
+**New this step:** `api-fetch-client` (lib), `timer-source` + three stores
+(substrate), `source-registry`, `source-scraper`, `knowledge-builder` (nodes).
+**Reuses:** `human-review-queue`, `llm-gateway`. The six ATS boards the founder
+named (Lever: mindtickle/nium/scaleway; Greenhouse: webflow; Ashby:
+posthog/vercel) are **seed sources**, never encoded adapters — the scraper infers
+each generically. The resulting `knowledge.updated` feeds straight back into the
+lead-gen function's `company-needs-analyzer`.
+
+---
+
 ## Step 5 — Wizard-of-Oz: the founder ghostwrites manually for 3 paying customers
 
 Three people from the waitlist agree to a 30-day trial at $299/mo. The founder
