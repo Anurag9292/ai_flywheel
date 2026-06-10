@@ -33,10 +33,11 @@ def test_loaded_runtime_registers_all_step1_6_nodes() -> None:
         "lead-sourcer",
         "company-needs-analyzer",
         "pitch-generator",
-        # Public-data ingestion cluster.
+        # Public-data ingestion cluster (+ insight inference → founder notify).
         "source-registry",
         "source-scraper",
         "knowledge-builder",
+        "insight-inferrer",
     }
 
 
@@ -57,7 +58,8 @@ def test_post_drafter_human_binding_from_yaml() -> None:
 
 def test_build_runtime_wrapper_matches_loader() -> None:
     # The public build_runtime() should produce the same node set as the loader.
-    # 14 nodes from Steps 1–6 + 3 from outbound lead-gen + 3 from public-data
-    # ingestion = 20.
+    # 14 nodes from Steps 1–6 + 3 from outbound lead-gen + 4 from public-data
+    # ingestion (source-registry, source-scraper, knowledge-builder,
+    # insight-inferrer; founder-notifier is shared, already counted) = 21.
     runtime, _, _ = build_runtime()
-    assert len(runtime.nodes) == 20
+    assert len(runtime.nodes) == 21

@@ -39,6 +39,7 @@ from flywheel.persistence.raw_record_store import (
     InMemoryRawRecordStore,
     RawRecordStore,
 )
+from flywheel.persistence.source_store import InMemorySourceStore, SourceStore
 
 
 @runtime_checkable
@@ -55,6 +56,9 @@ _TITLE_KEYS = ("title", "text", "name", "headline")
 _COMPANY_KEYS = ("company", "company_name", "organization", "org")
 _DEPT_KEYS = ("department", "dept", "team")
 _LOCATION_KEYS = ("location", "city", "office")
+_PRODUCT_KEYS = ("product", "product_name", "app", "service", "feature")
+_RATING_KEYS = ("rating", "score", "stars")
+_BODY_KEYS = ("body", "text", "review", "content", "comment", "message")
 
 
 def _first(raw: dict[str, Any], keys: tuple[str, ...]) -> str:
@@ -148,6 +152,122 @@ class StructuralExtractor:
         return entities, edges
 
 
+# Tiny, deterministic sentiment lexicon — enough to surface a "negative spike"
+# signal offline. The agentic insight-inferrer (Layer-1 LLM) does the nuanced
+# reasoning; this just labels each review so views/insights have a signal.
+_NEGATIVE_WORDS = (
+    "bad", "broken", "buggy", "slow", "crash", "terrible", "awful", "hate",
+    "worst", "useless", "disappointed", "refund", "cancel", "churn", "unusable",
+    "outage", "downtime", "expensive", "overpriced", "frustrating", "regret",
+)
+_POSITIVE_WORDS = (
+    "great", "love", "excellent", "amazing", "fast", "reliable", "perfect",
+    "best", "fantastic", "smooth", "intuitive", "delight", "recommend",
+)
+
+
+def classify_sentiment(rating: Any, text: str) -> str:
+    """Label a review ``"negative" | "neutral" | "positive"`` (deterministic).
+
+    Numeric rating dominates when present (assumes a 1–5 scale); otherwise a
+    cheap lexicon vote over the body decides. Generic — not source-specific.
+    """
+    try:
+        if rating is not None and str(rating).strip() != "":
+            r = float(rating)
+            if r <= 2:
+                return "negative"
+            if r >= 4:
+                return "positive"
+            return "neutral"
+    except (ValueError, TypeError):
+        pass
+    low = (text or "").lower()
+    neg = sum(w in low for w in _NEGATIVE_WORDS)
+    pos = sum(w in low for w in _POSITIVE_WORDS)
+    if neg > pos:
+        return "negative"
+    if pos > neg:
+        return "positive"
+    return "neutral"
+
+
+class ReviewExtractor:
+    """Generic extractor for review / ratings feeds.
+
+    Builds a ``Review`` entity per record, attributes it to a ``Company`` (and a
+    ``Product`` when present), and labels sentiment so downstream views/insights
+    can spot negative spikes. Field names are resolved via the same conventional
+    aliases the structural extractor uses — no provider-specific code.
+    """
+
+    version = "review-1"
+
+    def extract(self, record: RawRecord) -> tuple[list[Entity], list[Edge]]:
+        raw = record.raw or {}
+        vid = record.venture_id
+        company = _first(raw, _COMPANY_KEYS) or str(raw.get("_company", ""))
+        product = _first(raw, _PRODUCT_KEYS)
+        rating = next((raw[k] for k in _RATING_KEYS if k in raw), None)
+        body = _first(raw, _BODY_KEYS)
+        sentiment = classify_sentiment(rating, body)
+
+        review_key = f"{record.source_id}:{record.external_id}"
+        entities: list[Entity] = [
+            Entity(
+                type="Review",
+                key=review_key,
+                venture_id=vid,
+                props={
+                    "company": company,
+                    "product": product,
+                    "rating": rating,
+                    "sentiment": sentiment,
+                    "body": body,
+                    "source_id": record.source_id,
+                    "external_id": record.external_id,
+                },
+            )
+        ]
+        edges: list[Edge] = []
+        if company:
+            entities.append(Entity(type="Company", key=company, venture_id=vid, props={}))
+            edges.append(
+                Edge(
+                    type="reviewed",
+                    src_type="Review",
+                    src_key=review_key,
+                    dst_type="Company",
+                    dst_key=company,
+                    venture_id=vid,
+                    props={"sentiment": sentiment},
+                )
+            )
+        if product:
+            entities.append(Entity(type="Product", key=product, venture_id=vid, props={}))
+            edges.append(
+                Edge(
+                    type="about_product",
+                    src_type="Review",
+                    src_key=review_key,
+                    dst_type="Product",
+                    dst_key=product,
+                    venture_id=vid,
+                    props={"sentiment": sentiment},
+                )
+            )
+        return entities, edges
+
+
+# Which extractor handles a source, keyed by its ``enrichment.kind``. The
+# default (and any unknown kind) falls back to the structural/job extractor so
+# existing behavior is unchanged.
+def _extractor_for_kind(kind: str) -> Extractor:
+    if kind in ("review-feed", "reviews", "ratings"):
+        return ReviewExtractor()
+    return StructuralExtractor()
+
+
 class KnowledgeBuilder:
     name = "knowledge-builder"
     reacts_to = ["source.records.ingested", "tick.daily"]
@@ -159,16 +279,38 @@ class KnowledgeBuilder:
         *,
         raw_store: RawRecordStore | None = None,
         knowledge_store: KnowledgeStore | None = None,
+        source_store: SourceStore | None = None,
         extractor: Extractor | None = None,
     ) -> None:
         self._raw = raw_store or InMemoryRawRecordStore()
         self._knowledge = knowledge_store or InMemoryKnowledgeStore()
-        self._extractor = extractor or StructuralExtractor()
+        self._sources = source_store or InMemorySourceStore()
+        # An explicit extractor pins ALL records to it (back-compat / tests);
+        # otherwise the extractor is chosen per-source from ``enrichment.kind``.
+        self._pinned_extractor = extractor
+        default = extractor or StructuralExtractor()
         # Binding reflected in version/kind for the trace (mirrors post-drafter).
-        self.version = f"0.1.0-{self._extractor.version}"
-        self.kind = "agentic" if "llm" in self._extractor.version else "dumb"
+        self.version = f"0.1.0-{default.version}"
+        self.kind = "agentic" if "llm" in default.version else "dumb"
         # The builder's own incremental watermark over the raw store.
         self._watermark = 0
+        # Cache: source_id -> chosen extractor (avoids a store hit per record).
+        self._extractor_cache: dict[str, Extractor] = {}
+
+    def _extractor_for(self, record: RawRecord) -> Extractor:
+        if self._pinned_extractor is not None:
+            return self._pinned_extractor
+        sid = record.source_id
+        cached = self._extractor_cache.get(sid)
+        if cached is not None:
+            return cached
+        source = self._sources.get(sid) if sid else None
+        kind = ""
+        if source is not None:
+            kind = str(source.enrichment.get("kind", "")) if source.enrichment else ""
+        chosen = _extractor_for_kind(kind)
+        self._extractor_cache[sid] = chosen
+        return chosen
 
     def handle(self, event: Event, ctx: NodeContext) -> None:
         new_records = self._raw.read_since(self._watermark)
@@ -178,7 +320,7 @@ class KnowledgeBuilder:
         all_entities: list[Entity] = []
         all_edges: list[Edge] = []
         for rec in new_records:
-            ents, edges = self._extractor.extract(rec)
+            ents, edges = self._extractor_for(rec).extract(rec)
             all_entities.extend(ents)
             all_edges.extend(edges)
             self._watermark = max(self._watermark, rec.ingested_seq)
@@ -224,4 +366,28 @@ class KnowledgeBuilder:
         ]
         self._knowledge.refresh_view(
             MaterializedView(name="job_catalog", venture_id=venture_id, rows=catalog_rows)
+        )
+        # View 3: sentiment rollup by company (the consumable risk signal).
+        reviews = self._knowledge.entities(type="Review", venture_id=venture_id)
+        agg: dict[str, dict[str, Any]] = {}
+        for r in reviews:
+            company = r.props.get("company") or "(unknown)"
+            row = agg.setdefault(
+                company,
+                {"company": company, "total": 0, "negative": 0, "positive": 0, "neutral": 0},
+            )
+            row["total"] += 1
+            sentiment = r.props.get("sentiment", "neutral")
+            row[sentiment] = row.get(sentiment, 0) + 1
+        sentiment_rows = []
+        for _company, row in sorted(agg.items()):
+            total = row["total"] or 1
+            row["negative_ratio"] = round(row["negative"] / total, 3)
+            sentiment_rows.append(row)
+        self._knowledge.refresh_view(
+            MaterializedView(
+                name="recent_sentiment_by_company",
+                venture_id=venture_id,
+                rows=sentiment_rows,
+            )
         )

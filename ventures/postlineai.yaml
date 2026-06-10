@@ -94,3 +94,5 @@ functions:
         config:
           canned: true              # set false to use real httpx + LLM inference
       - name: knowledge-builder
+      - name: insight-inferrer        # agentic: KG -> founder-facing market insights
+      - name: founder-notifier        # reused (also in thesis / lead-gen)

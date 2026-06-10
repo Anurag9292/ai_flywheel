@@ -43,6 +43,7 @@ from flywheel.env import load_dotenv_if_present
 load_dotenv_if_present()
 
 from flywheel.core.events import Event  # noqa: E402  (after dotenv load)
+from flywheel.core.timers import TimerSource  # noqa: E402
 from flywheel.devserver.topology import (  # noqa: E402
     build_runtime,
     find_review_queue,
@@ -83,6 +84,10 @@ _ingestion = ingestion_stores()
 _venture = load_default_venture()
 # The human-review-queue holds parked items needing founder approval (Step 5).
 _review_queue = find_review_queue(_runtime)
+# Timer substrate: fires tick.* onto the live bus so timer-driven nodes
+# (source-scraper, knowledge-builder, insight-inferrer) re-run on a cadence —
+# this is what makes the ingestion flywheel keep turning "at a founder level".
+_timer = TimerSource(_bus)
 
 
 @app.get("/api/health")
@@ -202,6 +207,29 @@ def publish(req: PublishRequest) -> dict[str, Any]:
     }
 
 
+class TickRequest(BaseModel):
+    period: str = "daily"
+    venture_id: str = "postlineai"
+
+
+@app.post("/api/tick")
+def tick(req: TickRequest) -> dict[str, Any]:
+    """Fire a ``tick.<period>`` onto the live bus (manual scheduler pulse).
+
+    Timer-driven ingestion nodes re-run: the scraper re-fetches sources
+    (resumable + idempotent), the builder folds in any new records, and the
+    insight-inferrer re-reasons. Returns this pulse's trace chain.
+    """
+    event = _timer.tick(req.period, venture_id=req.venture_id)
+    rows = [r for r in _recorder.traces if r.get("correlation_id") == event.correlation_id]
+    chains = _chains_from(rows)
+    return {
+        "correlation_id": event.correlation_id,
+        "published": {"type": event.type, "venture_id": event.venture_id},
+        "chain": chains[0] if chains else {"correlation_id": event.correlation_id, "steps": []},
+    }
+
+
 @app.post("/api/reset")
 def reset() -> dict[str, Any]:
     """Clear the in-memory traces so the UI can start clean.
@@ -266,8 +294,8 @@ def ingestion_knowledge(view: str = "open_roles_by_company") -> dict[str, Any]:
     """The knowledge-builder output: a materialized view + graph counts.
 
     ``view`` selects which materialized view to return (default:
-    ``open_roles_by_company``; also ``job_catalog``). Entity/edge counts give a
-    quick sense of the graph size built from ingested records.
+    ``open_roles_by_company``; also ``job_catalog``, ``recent_sentiment_by_company``).
+    Entity/edge counts give a quick sense of the graph size built from records.
     """
     store = _ingestion.knowledge
     mv = store.get_view(view, "postlineai")
@@ -277,7 +305,7 @@ def ingestion_knowledge(view: str = "open_roles_by_company") -> dict[str, Any]:
         "refreshed_at": mv.refreshed_at.isoformat() if mv else None,
         "entity_counts": {
             t: len(store.entities(type=t, venture_id="postlineai"))
-            for t in ("Company", "Job", "Department", "Location")
+            for t in ("Company", "Job", "Department", "Location", "Review", "Product")
         },
         "edge_count": len(store.edges(venture_id="postlineai")),
     }
@@ -327,3 +355,40 @@ def review_approve(req: ApproveRequest) -> dict[str, Any]:
         "approved": req.event_id,
         "chain": chains[0] if chains else {"correlation_id": event.correlation_id, "steps": []},
     }
+
+
+# ── Optional autonomous scheduler ──────────────────────────────────────────────
+#
+# Set FLYWHEEL_TICK_SECONDS=<n> to have the server fire tick.daily every n
+# seconds in a background thread, so the ingestion flywheel self-runs without a
+# manual /api/tick call. Off by default (deterministic dev/tests). In production
+# a real cron / Temporal cron workflow drives /api/tick behind the same surface.
+def _start_auto_ticker() -> None:
+    raw = os.environ.get("FLYWHEEL_TICK_SECONDS", "").strip()
+    if not raw:
+        return
+    try:
+        interval = float(raw)
+    except ValueError:
+        return
+    if interval <= 0:
+        return
+
+    import threading
+
+    venture = os.environ.get("FLYWHEEL_VENTURE", "postlineai") or "postlineai"
+
+    def _loop() -> None:
+        import time
+
+        while True:
+            time.sleep(interval)
+            try:
+                _timer.tick_daily(venture_id=venture)
+            except Exception:  # noqa: BLE001 - a scheduler must never crash the server
+                continue
+
+    threading.Thread(target=_loop, name="flywheel-auto-ticker", daemon=True).start()
+
+
+_start_auto_ticker()
