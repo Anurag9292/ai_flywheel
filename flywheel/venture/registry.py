@@ -16,7 +16,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from flywheel.core.inferencer import FakeInferencer, LLMInferencer
 from flywheel.core.node import Node
+from flywheel.libraries.api_fetch_client import FakeApiFetchClient, HttpxApiFetchClient
 from flywheel.libraries.job_board_client import (
     FakeJobBoardClient,
     JobSearchCriteria,
@@ -35,6 +37,7 @@ from flywheel.nodes.customer_survey import CustomerSurvey
 from flywheel.nodes.founder_notifier import FounderNotifier
 from flywheel.nodes.human_review_queue import DEFAULT_RESULT_MAP, HumanReviewQueue
 from flywheel.nodes.input_intake import InputIntake
+from flywheel.nodes.knowledge_builder import KnowledgeBuilder
 from flywheel.nodes.lead_sourcer import LeadSourcer
 from flywheel.nodes.market_scanner import MarketMap, MarketScanner
 from flywheel.nodes.pain_extractor import PainExtractor, PainReport
@@ -43,8 +46,19 @@ from flywheel.nodes.post_analytics_collector import PostAnalyticsCollector
 from flywheel.nodes.post_drafter import HumanDrafter, PostDrafter
 from flywheel.nodes.post_scheduler import PostScheduler
 from flywheel.nodes.signal_analyzer import SignalAnalyzer, SignalVerdict
+from flywheel.nodes.source_registry import SourceRegistry
+from flywheel.nodes.source_scraper import SourceScraper
 from flywheel.nodes.subscription_manager import SubscriptionManager
 from flywheel.nodes.thesis_tracker import ThesisTracker
+from flywheel.persistence.knowledge_store import (
+    InMemoryKnowledgeStore,
+    KnowledgeStore,
+)
+from flywheel.persistence.raw_record_store import (
+    InMemoryRawRecordStore,
+    RawRecordStore,
+)
+from flywheel.persistence.source_store import InMemorySourceStore, SourceStore
 
 NodeFactory = Callable[[dict[str, Any]], Node]
 
@@ -269,6 +283,90 @@ def _human_review_queue(_config: dict[str, Any]) -> Node:
     return HumanReviewQueue(result_map=_REVIEW_RESULT_MAP)
 
 
+# ── Public-data ingestion cluster ──────────────────────────────────────────────
+#
+# The three ingestion nodes must share store instances within a single runtime
+# (the scraper writes the raw store the builder reads; both share the source
+# store). The registry builds nodes independently, so we hold a per-build bundle
+# of shared stores. ``build_runtime_from_venture`` constructs all nodes in one
+# pass; call ``reset_ingestion_stores()`` before each build to get fresh state.
+
+
+class _IngestionStores:
+    """Shared store instances wired across the three ingestion node builders."""
+
+    def __init__(self) -> None:
+        self.source: SourceStore = InMemorySourceStore()
+        self.raw: RawRecordStore = InMemoryRawRecordStore()
+        self.knowledge: KnowledgeStore = InMemoryKnowledgeStore()
+
+
+_INGESTION_STORES = _IngestionStores()
+
+
+def reset_ingestion_stores(
+    *,
+    source: SourceStore | None = None,
+    raw: RawRecordStore | None = None,
+    knowledge: KnowledgeStore | None = None,
+) -> _IngestionStores:
+    """Reset (or inject) the shared ingestion stores; returns the bundle.
+
+    Pass real ``Sql*`` stores here (when ``DB_URL`` is set) to back the cluster
+    with Neon; default is fresh in-memory fakes so the dev demo / tests stay
+    zero-infra and deterministic.
+    """
+    global _INGESTION_STORES
+    bundle = _IngestionStores()
+    if source is not None:
+        bundle.source = source
+    if raw is not None:
+        bundle.raw = raw
+    if knowledge is not None:
+        bundle.knowledge = knowledge
+    _INGESTION_STORES = bundle
+    return bundle
+
+
+def ingestion_stores() -> _IngestionStores:
+    """The current shared ingestion store bundle (for dev API introspection)."""
+    return _INGESTION_STORES
+
+
+def _source_registry(_config: dict[str, Any]) -> Node:
+    return SourceRegistry(store=_INGESTION_STORES.source)
+
+
+def _source_scraper(config: dict[str, Any]) -> Node:
+    # Canned (default): offline fake fetch + heuristic inferencer, fully
+    # deterministic. ``canned: false`` wires the real httpx client + LLM
+    # inferencer (the agentic path) for live runs.
+    if not config.get("canned", True):
+        return SourceScraper(
+            fetch_client=HttpxApiFetchClient(),
+            inferencer=LLMInferencer(),
+            source_store=_INGESTION_STORES.source,
+            raw_store=_INGESTION_STORES.raw,
+        )
+    from flywheel.nodes._ingestion_seed import seed_bodies
+
+    return SourceScraper(
+        # Canned bodies for the six seed ATS sources, so a triggered scrape runs
+        # end-to-end offline. The heuristic inferencer reads each shape generically.
+        fetch_client=FakeApiFetchClient(seed_bodies()),
+        inferencer=FakeInferencer(),
+        source_store=_INGESTION_STORES.source,
+        raw_store=_INGESTION_STORES.raw,
+    )
+
+
+def _knowledge_builder(_config: dict[str, Any]) -> Node:
+    return KnowledgeBuilder(
+        raw_store=_INGESTION_STORES.raw,
+        knowledge_store=_INGESTION_STORES.knowledge,
+    )
+
+
 # ── The registry ──────────────────────────────────────────────────────────────
 
 NODE_BUILDERS: dict[str, NodeFactory] = {
@@ -290,6 +388,10 @@ NODE_BUILDERS: dict[str, NodeFactory] = {
     "lead-sourcer": _lead_sourcer,
     "company-needs-analyzer": _company_needs_analyzer,
     "pitch-generator": _pitch_generator,
+    # Public-data ingestion cluster.
+    "source-registry": _source_registry,
+    "source-scraper": _source_scraper,
+    "knowledge-builder": _knowledge_builder,
 }
 
 

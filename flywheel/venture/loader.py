@@ -15,7 +15,7 @@ import yaml
 from flywheel.core.events import InMemoryEventBus
 from flywheel.core.node import Runtime
 from flywheel.core.substrate import TraceRecorder
-from flywheel.venture.registry import build_node
+from flywheel.venture.registry import build_node, reset_ingestion_stores
 from flywheel.venture.schema import Venture
 
 # Repo-root ``ventures/`` directory (this file is flywheel/venture/loader.py).
@@ -47,6 +47,10 @@ def build_runtime_from_venture(
     bus = InMemoryEventBus()
     recorder = TraceRecorder(bus, log_path=trace_log, keep_in_memory=keep_in_memory)
     runtime = Runtime(bus, recorder)
+
+    # Fresh shared stores for the ingestion cluster, so each runtime build is
+    # isolated (the scraper/builder/registry nodes wire to this same bundle).
+    reset_ingestion_stores()
 
     for spec in venture.node_specs():
         runtime.register(build_node(spec.name, spec.config))

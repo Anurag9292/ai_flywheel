@@ -229,6 +229,39 @@ def test_subscription_request_activates_and_charges() -> None:
     assert nodes == ["subscription-manager"]
 
 
+def test_ingestion_endpoints_register_scrape_and_expose_knowledge() -> None:
+    from flywheel.nodes._ingestion_seed import seed_register_payload
+
+    # Registering sources triggers the first scrape (sources.updated → scraper).
+    r = client.post(
+        "/api/publish",
+        json={
+            "type": "source.register.requested",
+            "venture_id": "postlineai",
+            "payload": seed_register_payload(),
+        },
+    )
+    assert r.status_code == 200
+
+    # Sources endpoint shows the registered sources with inferred plans + cursors.
+    sources = client.get("/api/ingestion/sources").json()
+    assert sources["count"] == 6
+    one = sources["sources"][0]
+    assert one["ingest_plan"] is not None  # schema was inferred during scrape
+    assert "cursor" in one
+
+    # Knowledge endpoint exposes the materialized view + graph counts.
+    knowledge = client.get("/api/ingestion/knowledge").json()
+    companies = {r["company"] for r in knowledge["rows"]}
+    assert {"Mindtickle", "Webflow", "PostHog", "Vercel"} <= companies
+    assert knowledge["entity_counts"]["Company"] >= 6
+    assert knowledge["edge_count"] >= 6
+
+    # The job_catalog view is also available.
+    catalog = client.get("/api/ingestion/knowledge?view=job_catalog").json()
+    assert len(catalog["rows"]) >= 7
+
+
 def test_build_chain_orders_and_links_causally() -> None:
     from flywheel.devserver.app import _build_chain
 
