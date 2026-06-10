@@ -38,19 +38,33 @@ def build_runtime_from_venture(
     trace_log: Path | None = None,
     *,
     keep_in_memory: bool = False,
+    ingestion_stores_override: object | None = None,
 ) -> tuple[Runtime, InMemoryEventBus, TraceRecorder]:
     """Wire a Runtime by registering the venture's (deduplicated) node set.
 
     Returns the runtime, its bus, and the recorder — same shape as the old
     ``build_runtime()`` so callers (dev API, demos, tests) are unaffected.
+
+    ``ingestion_stores_override`` (a bundle returned by ``reset_ingestion_stores``)
+    backs the ingestion cluster with real (Neon) stores instead of fresh
+    in-memory fakes. When ``None`` (default) the cluster uses fresh fakes, so
+    demos/tests stay zero-infra and deterministic.
     """
     bus = InMemoryEventBus()
     recorder = TraceRecorder(bus, log_path=trace_log, keep_in_memory=keep_in_memory)
     runtime = Runtime(bus, recorder)
 
-    # Fresh shared stores for the ingestion cluster, so each runtime build is
-    # isolated (the scraper/builder/registry nodes wire to this same bundle).
-    reset_ingestion_stores()
+    # Shared stores for the ingestion cluster. Each runtime build is isolated:
+    # either fresh fakes (default) or the injected real-store bundle, so the
+    # registry/scraper/builder/insight nodes all wire to the same instances.
+    if ingestion_stores_override is not None:
+        reset_ingestion_stores(
+            source=ingestion_stores_override.source,  # type: ignore[attr-defined]
+            raw=ingestion_stores_override.raw,  # type: ignore[attr-defined]
+            knowledge=ingestion_stores_override.knowledge,  # type: ignore[attr-defined]
+        )
+    else:
+        reset_ingestion_stores()
 
     for spec in venture.node_specs():
         runtime.register(build_node(spec.name, spec.config))

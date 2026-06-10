@@ -47,6 +47,7 @@ from flywheel.nodes.customer_survey import CustomerSurvey
 from flywheel.nodes.founder_notifier import FounderNotifier
 from flywheel.nodes.human_review_queue import DEFAULT_RESULT_MAP, HumanReviewQueue
 from flywheel.nodes.input_intake import InputIntake
+from flywheel.nodes.insight_inferrer import InsightInferrer, InsightSet
 from flywheel.nodes.knowledge_builder import KnowledgeBuilder
 from flywheel.nodes.lead_sourcer import LeadSourcer
 from flywheel.nodes.market_scanner import MarketMap, MarketScanner
@@ -430,7 +431,121 @@ def _knowledge_builder(_config: dict[str, Any]) -> Node:
     return KnowledgeBuilder(
         raw_store=_INGESTION_STORES.raw,
         knowledge_store=_INGESTION_STORES.knowledge,
+        source_store=_INGESTION_STORES.source,
     )
+
+
+def _insight_inferrer(config: dict[str, Any]) -> Node:
+    # Agentic: reasons over the knowledge graph to surface founder-facing market
+    # insights. Live wiring uses a real LLM (needs OPENAI_API_KEY); the default
+    # canned path returns deterministic, signal-grounded insights so /topology
+    # and tests run offline.
+    if config.get("live", False):
+        _require_env("OPENAI_API_KEY", "insight-inferrer", "live market inference")
+        return InsightInferrer(
+            knowledge_store=_INGESTION_STORES.knowledge,
+            gateway=LiteLLMGateway(),
+        )
+    if not config.get("canned", True):
+        return InsightInferrer(knowledge_store=_INGESTION_STORES.knowledge)
+    gateway = FakeLLMGateway()
+    gateway.register(InsightSet.__name__, _canned_insights)
+    return InsightInferrer(knowledge_store=_INGESTION_STORES.knowledge, gateway=gateway)
+
+
+def _canned_insights(prompt: str) -> dict[str, Any]:
+    """Deterministic insights derived from the context embedded in the prompt.
+
+    The prompt carries the ``open_roles`` and ``sentiment`` view rows; we parse
+    company names heuristically so the canned gateway produces a plausible,
+    grounded insight per company without a network call. Mirrors how the other
+    canned agentic nodes build one builder per schema.
+    """
+    insights: list[dict[str, Any]] = []
+    # Lead opportunities: any company appearing in the open-roles section.
+    for company in _companies_after(prompt, "Open roles by company:"):
+        insights.append(
+            {
+                "kind": "lead_opportunity",
+                "company": company,
+                "headline": f"{company} is hiring for content/brand — likely needs ghostwriting",
+                "rationale": "An open content/brand/founder-comms role is a strong "
+                "'they need help telling their story now' signal.",
+                "recommended_action": f"Send {company} a tailored founder-ghostwriting pitch.",
+                "confidence": 0.82,
+                "urgent": True,
+            }
+        )
+    # Risk signals: only companies with an actual negative-sentiment cluster.
+    for company in _negative_companies_after(prompt, "Sentiment by company:"):
+        insights.append(
+            {
+                "kind": "risk_signal",
+                "company": company,
+                "headline": f"Negative-review spike detected for {company}",
+                "rationale": "A cluster of negative reviews signals churn/displacement "
+                "risk — and an outreach opening.",
+                "recommended_action": f"Reach out to {company}'s customers / monitor sentiment.",
+                "confidence": 0.7,
+                "urgent": True,
+            }
+        )
+    return {"insights": insights}
+
+
+def _companies_after(prompt: str, marker: str) -> list[str]:
+    """Best-effort extraction of company names from a prompt section.
+
+    The view rows are rendered as Python dicts in the prompt; we scan the lines
+    of the marked section for ``'company': '<name>'`` occurrences. Deterministic
+    and dependency-free.
+    """
+    import re
+
+    start = prompt.find(marker)
+    if start == -1:
+        return []
+    # Section ends at the next blank-line-separated marker (the other view).
+    rest = prompt[start + len(marker):]
+    end = rest.find("\n\n")
+    section = rest if end == -1 else rest[:end]
+    found = re.findall(r"'company':\s*'([^']+)'", section)
+    # De-dup, preserve order, drop the "(unknown)" bucket.
+    seen: list[str] = []
+    for c in found:
+        if c and c != "(unknown)" and c not in seen:
+            seen.append(c)
+    return seen
+
+
+def _negative_companies_after(prompt: str, marker: str) -> list[str]:
+    """Companies in the sentiment section whose negative_ratio exceeds a floor.
+
+    The sentiment view rows render ``'company': '<name>', ... 'negative_ratio': <f>``;
+    we pair each company with the next negative_ratio in the same row and keep
+    those above a small threshold — so only real negative clusters become risks.
+    """
+    import re
+
+    start = prompt.find(marker)
+    if start == -1:
+        return []
+    rest = prompt[start + len(marker):]
+    end = rest.find("\n\n")
+    section = rest if end == -1 else rest[:end]
+    # Match each row's company together with its negative_ratio.
+    pairs = re.findall(
+        r"'company':\s*'([^']+)'.*?'negative_ratio':\s*([0-9.]+)", section
+    )
+    out: list[str] = []
+    for company, ratio in pairs:
+        try:
+            if company and company != "(unknown)" and float(ratio) >= 0.5:
+                if company not in out:
+                    out.append(company)
+        except ValueError:
+            continue
+    return out
 
 
 # ── The registry ──────────────────────────────────────────────────────────────
@@ -458,6 +573,7 @@ NODE_BUILDERS: dict[str, NodeFactory] = {
     "source-registry": _source_registry,
     "source-scraper": _source_scraper,
     "knowledge-builder": _knowledge_builder,
+    "insight-inferrer": _insight_inferrer,
 }
 
 

@@ -36,6 +36,32 @@ def selected_venture_name() -> str:
     return os.environ.get(VENTURE_ENV_VAR, DEFAULT_VENTURE) or DEFAULT_VENTURE
 
 
+def resolve_ingestion_stores() -> object | None:
+    """Real (Neon) ingestion stores when ``DB_URL`` is set, else ``None``.
+
+    This is the single switch that makes the whole ingestion flywheel persist
+    to a real database: with ``DB_URL`` present (e.g. from ``.env``), the dev
+    server backs the source/raw/knowledge stores with SQLAlchemy/Neon so every
+    UI-triggered run is durable; without it, the cluster stays on in-memory
+    fakes (zero-infra demos/tests). Imports are lazy so the fake path never
+    requires the ``db`` extra.
+    """
+    if not os.environ.get("DB_URL"):
+        return None
+    from flywheel.persistence.sql_stores import (
+        SqlKnowledgeStore,
+        SqlRawRecordStore,
+        SqlSourceStore,
+    )
+    from flywheel.venture.registry import reset_ingestion_stores
+
+    return reset_ingestion_stores(
+        source=SqlSourceStore(),
+        raw=SqlRawRecordStore(),
+        knowledge=SqlKnowledgeStore(),
+    )
+
+
 def load_default_venture(name: str | None = None) -> Venture:
     """Load a venture definition by name (defaults to the env-selected one)."""
     return load_venture_by_name(name or selected_venture_name())
@@ -71,10 +97,16 @@ def build_runtime(
 
     Pass ``trace_log`` to also append rows to a JSONL file (headless scripts);
     the dev API uses ``keep_in_memory=True`` and no file.
+
+    When ``DB_URL`` is set, the ingestion cluster is backed by real (Neon)
+    stores so UI/scripted runs persist; otherwise it uses in-memory fakes.
     """
     venture = load_default_venture(venture_name)
     return build_runtime_from_venture(
-        venture, trace_log, keep_in_memory=keep_in_memory
+        venture,
+        trace_log,
+        keep_in_memory=keep_in_memory,
+        ingestion_stores_override=resolve_ingestion_stores(),
     )
 
 

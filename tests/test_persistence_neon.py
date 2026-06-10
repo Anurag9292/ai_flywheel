@@ -127,7 +127,9 @@ def test_sql_full_ingestion_flow() -> None:
     )
     _, bus, _ = build_runtime(keep_in_memory=True)
     ingested: list[Event] = []
+    insights: list[Event] = []
     bus.subscribe("source.records.ingested", ingested.append)
+    bus.subscribe("market.insight", insights.append)
 
     bus.publish(
         Event(
@@ -137,3 +139,6 @@ def test_sql_full_ingestion_flow() -> None:
         )
     )
     assert sum(e.payload["new_count"] for e in ingested) >= 1
+    # The insight-inferrer reasoned over the Neon-backed graph and surfaced at
+    # least one founder-facing market insight.
+    assert any(i.payload.get("kind") == "lead_opportunity" for i in insights)

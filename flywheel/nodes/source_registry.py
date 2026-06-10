@@ -21,11 +21,43 @@ stored source — the registry is the single place that knowledge accumulates.
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import urlparse
 
 from flywheel.core.events import Event
 from flywheel.core.node import NodeContext
 from flywheel.persistence.models import Source
 from flywheel.persistence.source_store import InMemorySourceStore, SourceStore
+
+# Machine enrichment: cheap, deterministic URL-pattern → (kind, tags) rules so a
+# source registered with *just a URL* still gets classified without a human. The
+# scraper stays schema-agnostic; this only annotates `enrichment.kind`, which the
+# knowledge-builder uses to pick an extractor (jobs vs reviews) and the
+# insight-inferrer uses for context. Extend this table as new domains arrive.
+_ENRICHMENT_RULES: tuple[tuple[tuple[str, ...], str, tuple[str, ...]], ...] = (
+    # (substrings to match in host+path, kind, tags)
+    (("lever.co", "greenhouse.io", "ashbyhq.com", "/jobs", "/postings", "careers"),
+     "ats-job-board", ("ats", "hiring-signal")),
+    (("review", "ratings", "g2.com", "trustpilot", "capterra", "feedback"),
+     "review-feed", ("reviews", "sentiment-signal")),
+)
+
+
+def infer_source_enrichment(url: str) -> dict[str, Any]:
+    """Best-effort machine enrichment for a source URL.
+
+    Returns a dict with an inferred ``kind`` and ``tags`` when a rule matches,
+    else ``{}``. Deterministic and dependency-free — humans/explicit enrichment
+    always override (we never clobber caller-supplied values; see ``_register``).
+    """
+    try:
+        parsed = urlparse(url)
+        haystack = f"{parsed.netloc}{parsed.path}".lower()
+    except (ValueError, AttributeError):
+        return {}
+    for needles, kind, tags in _ENRICHMENT_RULES:
+        if any(n in haystack for n in needles):
+            return {"kind": kind, "tags": list(tags)}
+    return {}
 
 
 class SourceRegistry:
@@ -54,15 +86,25 @@ class SourceRegistry:
         if specs is None:
             specs = [event.payload]
         for spec in specs:
+            url = spec.get("url", "")
+            # Machine enrichment first, then layer caller-supplied values ON TOP
+            # so explicit human/automated enrichment always wins (never clobbered).
+            inferred = infer_source_enrichment(url)
+            enrichment = dict(spec.get("enrichment", {}) or {})
+            if "kind" in inferred and "kind" not in enrichment:
+                enrichment["kind"] = inferred["kind"]
+            tags = list(
+                dict.fromkeys([*(inferred.get("tags", [])), *(spec.get("tags", []) or [])])
+            )
             self._store.upsert(
                 Source(
                     id=spec.get("id", ""),
                     venture_id=event.venture_id,
-                    url=spec.get("url", ""),
+                    url=url,
                     auth_ref=spec.get("auth_ref", ""),
                     hints=spec.get("hints", {}) or {},
-                    enrichment=spec.get("enrichment", {}) or {},
-                    tags=spec.get("tags", []) or [],
+                    enrichment=enrichment,
+                    tags=tags,
                     enabled=spec.get("enabled", True),
                 )
             )

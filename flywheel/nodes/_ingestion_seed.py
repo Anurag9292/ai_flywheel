@@ -110,9 +110,52 @@ SEED_SOURCES: list[dict[str, Any]] = [
 ]
 
 
+# Canned review/ratings sources — a SECOND public-data domain, shape-faithful to
+# typical reviews APIs (flat ``reviews`` array with a numeric rating + body). They
+# prove the ingestion engine is source-agnostic: the SAME scraper infers their
+# schema, the knowledge-builder routes them to the ReviewExtractor (via the
+# auto-inferred ``enrichment.kind == "review-feed"``), and the insight-inferrer
+# turns a negative-sentiment cluster into a founder risk signal. Deliberately
+# seeded with several negative reviews for one company to demonstrate the spike.
+SEED_REVIEW_SOURCES: list[dict[str, Any]] = [
+    {
+        "id": "reviews-acme",
+        "url": "https://api.reviews.example.com/v1/products/acme/reviews",
+        "company": "Acme Analytics",
+        "body": {
+            "reviews": [
+                {"id": "rv-1", "company": "Acme Analytics", "product": "Acme Dashboard",
+                 "rating": 1, "body": "Constant outages and slow dashboards. Considering a refund.",
+                 "created_at": "2026-06-08T10:00:00Z"},
+                {"id": "rv-2", "company": "Acme Analytics", "product": "Acme Dashboard",
+                 "rating": 2, "body": "Buggy and frustrating after the update; want to cancel.",
+                 "created_at": "2026-06-07T09:00:00Z"},
+                {"id": "rv-3", "company": "Acme Analytics", "product": "Acme Dashboard",
+                 "rating": 1, "body": "Terrible support, downtime again. Looking at alternatives.",
+                 "created_at": "2026-06-06T08:00:00Z"},
+            ]
+        },
+    },
+    {
+        "id": "reviews-brightfern",
+        "url": "https://api.reviews.example.com/v1/products/brightfern/reviews",
+        "company": "BrightFern",
+        "body": {
+            "reviews": [
+                {"id": "bf-1", "company": "BrightFern", "product": "BrightFern CRM",
+                 "rating": 5, "body": "Fast, reliable, and intuitive. Highly recommend!",
+                 "created_at": "2026-06-08T11:00:00Z"},
+            ]
+        },
+    },
+]
+
+
 def seed_bodies() -> dict[str, Any]:
-    """``{url: canned_body}`` for the ``FakeApiFetchClient``."""
-    return {s["url"]: s["body"] for s in SEED_SOURCES}
+    """``{url: canned_body}`` for the ``FakeApiFetchClient`` (jobs + reviews)."""
+    bodies = {s["url"]: s["body"] for s in SEED_SOURCES}
+    bodies.update({s["url"]: s["body"] for s in SEED_REVIEW_SOURCES})
+    return bodies
 
 
 def seed_register_payload() -> dict[str, Any]:
@@ -130,5 +173,34 @@ def seed_register_payload() -> dict[str, Any]:
                 "tags": ["ats", "hiring-signal"],
             }
             for s in SEED_SOURCES
+        ]
+    }
+
+
+def seed_review_register_payload() -> dict[str, Any]:
+    """Payload registering the canned review/ratings sources.
+
+    Note: ``kind`` is intentionally **omitted** here so the registry's machine
+    enrichment infers ``review-feed`` from the URL — demonstrating autonomous
+    classification. Only the company is stamped (used for grouping).
+    """
+    return {
+        "sources": [
+            {
+                "id": s["id"],
+                "url": s["url"],
+                "enrichment": {"company": s["company"]},
+            }
+            for s in SEED_REVIEW_SOURCES
+        ]
+    }
+
+
+def seed_all_register_payload() -> dict[str, Any]:
+    """Both domains (job boards + review feeds) in one register payload."""
+    return {
+        "sources": [
+            *seed_register_payload()["sources"],
+            *seed_review_register_payload()["sources"],
         ]
     }
